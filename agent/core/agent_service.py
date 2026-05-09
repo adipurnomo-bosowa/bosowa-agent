@@ -99,6 +99,7 @@ class AgentService:
         self._tasks.append(asyncio.create_task(self._audit_flush_loop()))
         self._tasks.append(asyncio.create_task(self._focus_sample_loop()))
         self._tasks.append(asyncio.create_task(self._hardware_refresh_loop()))
+        self._tasks.append(asyncio.create_task(self._version_check_loop()))
 
     # ------------------------------------------------------------------
     # Token refresh loop
@@ -142,6 +143,31 @@ class AgentService:
             if not self._running:
                 break
             await self._send_initial_hardware()
+
+    async def _version_check_loop(self) -> None:
+        """Cek update agent dari server setiap 6 jam. Apply jika ada versi lebih baru."""
+        from agent.core.auto_update import (
+            fetch_latest_version, is_newer_version,
+            download_update, apply_update_and_relaunch,
+        )
+
+        await asyncio.sleep(60)  # tunggu 60s setelah startup
+        while self._running:
+            try:
+                info = await asyncio.to_thread(fetch_latest_version, self.tokens.token)
+                if info and is_newer_version(info.get('version', ''), config.AGENT_VERSION):
+                    logger.info(
+                        'Update tersedia: %s (saat ini %s)',
+                        info['version'], config.AGENT_VERSION,
+                    )
+                    dl_url = info.get('download_url', '')
+                    if dl_url:
+                        new_exe = await asyncio.to_thread(download_update, dl_url, self.tokens.token)
+                        if new_exe:
+                            apply_update_and_relaunch(new_exe)
+            except Exception as e:
+                logger.warning('Version check error: %s', e)
+            await asyncio.sleep(6 * 3600)
 
     # ------------------------------------------------------------------
     # Command dispatcher
