@@ -1,0 +1,13 @@
+---
+description: Bosowa Windows agent — socket, lock overlay, audit telemetry
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Bosowa Agent (Python)
+
+- **Process lifecycle**: `force_lock` and similar paths must ensure the agent comes back after exit — use detached `relaunch_agent_process()` (see `agent/utils/relaunch.py`) instead of relying only on Task Scheduler logon triggers.
+- **Lock message**: Persist reason with flush/fsync (`store_lock_message`) before exit so the new process can read it for the overlay.
+- **Socket**: Join rooms with MAC format consistent with portal normalization; avoid duplicate connections leaking heartbeats.
+- **Audit**: Batch LINK/APP (and related) events through the audit client; respect flush intervals and pruning expectations aligned with portal ingest.
+- **Overlay**: Opening the portal/login from lockscreen should emit LINK audit events when applicable.
