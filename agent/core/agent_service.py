@@ -98,6 +98,7 @@ class AgentService:
         self._tasks.append(asyncio.create_task(self._token_refresh_loop()))
         self._tasks.append(asyncio.create_task(self._audit_flush_loop()))
         self._tasks.append(asyncio.create_task(self._focus_sample_loop()))
+        self._tasks.append(asyncio.create_task(self._hardware_refresh_loop()))
 
     # ------------------------------------------------------------------
     # Token refresh loop
@@ -134,6 +135,14 @@ class AgentService:
                 except Exception:
                     pass
 
+    async def _hardware_refresh_loop(self) -> None:
+        """Kirim hardware snapshot lengkap ke server setiap 1 jam."""
+        while self._running:
+            await asyncio.sleep(3600)
+            if not self._running:
+                break
+            await self._send_initial_hardware()
+
     # ------------------------------------------------------------------
     # Command dispatcher
     # ------------------------------------------------------------------
@@ -157,8 +166,8 @@ class AgentService:
             await self.stop()
             _trigger_shutdown()
         elif cmd == 'collect_hardware':
-            snapshot = get_hardware_snapshot()
-            logger.debug('Hardware snapshot: %s', snapshot)
+            await self._send_initial_hardware()
+            logger.info('Hardware snapshot sent on-demand')
         else:
             logger.debug('Unknown command: %s', cmd)
 
