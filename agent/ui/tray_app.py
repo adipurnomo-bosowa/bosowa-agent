@@ -460,18 +460,19 @@ class AgentTrayApp:
         tickets_layout.addLayout(ticket_actions)
 
         ticket_table = QtWidgets.QTableWidget()
-        ticket_table.setColumnCount(6)
-        ticket_table.setHorizontalHeaderLabels(['ID', 'Status', 'Prioritas', 'Kategori', 'Judul', 'Dibuat'])
+        ticket_table.setColumnCount(5)
+        ticket_table.setHorizontalHeaderLabels(['Status', 'Prioritas', 'Kategori', 'Judul', 'Dibuat'])
         ticket_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
         ticket_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
         ticket_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
-        ticket_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
-        ticket_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
-        ticket_table.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeToContents)
+        ticket_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
+        ticket_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeToContents)
         ticket_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         ticket_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         ticket_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        ticket_table.setToolTip('Klik baris untuk lihat detail / balas catatan admin')
         tickets_layout.addWidget(ticket_table)
+        ticket_data_desktop: list[dict] = []
 
         content_stack.addWidget(tickets_page)
 
@@ -515,6 +516,8 @@ class AgentTrayApp:
         def load_tickets() -> None:
             try:
                 tickets = list_my_tickets()
+                ticket_data_desktop.clear()
+                ticket_data_desktop.extend(tickets)
                 ticket_table.setRowCount(len(tickets))
                 for i, t in enumerate(tickets):
                     created = t.get('createdAt')
@@ -523,7 +526,6 @@ class AgentTrayApp:
                     except Exception:
                         created_fmt = str(created or '-')
                     values = [
-                        str(t.get('id', '-')),
                         str(t.get('status', '-')),
                         str(t.get('priority', '-')),
                         str(t.get('category', '-')),
@@ -531,7 +533,10 @@ class AgentTrayApp:
                         created_fmt,
                     ]
                     for col, val in enumerate(values):
-                        ticket_table.setItem(i, col, QtWidgets.QTableWidgetItem(val))
+                        item = QtWidgets.QTableWidgetItem(val)
+                        if t.get('adminNote'):
+                            item.setForeground(QtGui.QColor('#64B5F6'))
+                        ticket_table.setItem(i, col, item)
             except Exception as e:
                 logger.warning('Load desktop tickets failed: %s', e)
                 QtWidgets.QMessageBox.warning(dlg, 'Tickets', str(e))
@@ -551,6 +556,13 @@ class AgentTrayApp:
         quick_list_btn.clicked.connect(go_to_tickets)
         ticket_create_btn.clicked.connect(self._show_create_ticket_dialog)
         ticket_refresh_btn.clicked.connect(load_tickets)
+
+        def on_desktop_ticket_clicked(row: int) -> None:
+            if row < 0 or row >= len(ticket_data_desktop):
+                return
+            self._show_ticket_detail(ticket_data_desktop[row], load_tickets)
+
+        ticket_table.cellClicked.connect(on_desktop_ticket_clicked)
         close_btn.clicked.connect(dlg.accept)
 
         timer = QtCore.QTimer(dlg)
@@ -830,16 +842,28 @@ class AgentTrayApp:
 
         pin_data = get_pin_hash_and_expiry()
         if not pin_data:
-            answer = QtWidgets.QMessageBox.question(
-                None,
-                'PIN Tidak Tersedia',
-                'PIN belum diset atau sudah expired.\n\n'
-                'Ingin membuat tiket IT untuk meminta admin membuka USB?',
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                QtWidgets.QMessageBox.Yes,
-            )
-            if answer == QtWidgets.QMessageBox.Yes:
-                self._show_create_ticket_dialog()
+            # Cek apakah online
+            online = self._detect_primary_ip() != '-'
+            if online:
+                answer = QtWidgets.QMessageBox.question(
+                    None,
+                    'PIN Tidak Tersedia',
+                    'PIN belum diset atau sudah expired.\n\n'
+                    'Ingin membuat tiket IT untuk meminta admin set PIN / buka USB?',
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.Yes,
+                )
+                if answer == QtWidgets.QMessageBox.Yes:
+                    self._show_create_ticket_dialog()
+            else:
+                QtWidgets.QMessageBox.warning(
+                    None,
+                    'PIN Tidak Tersedia — Offline',
+                    'PIN belum diset atau sudah expired.\n'
+                    'Perangkat sedang OFFLINE — tidak bisa membuat tiket.\n\n'
+                    'Hubungi IT Admin / IT Staff secara langsung\n'
+                    'untuk meminta PIN perangkat Anda diset melalui Portal Bosowa.',
+                )
             return
 
         pin_hash, valid_until = pin_data
