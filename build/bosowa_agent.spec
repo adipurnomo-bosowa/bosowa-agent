@@ -13,7 +13,7 @@ AGENT_SRC = ROOT / 'agent'
 sys.path.insert(0, str(AGENT_SRC))
 
 a = Analysis(
-    [str(AGENT_SRC / 'main.py')],
+    [str(AGENT_SRC / '__main__.py')],
     pathex=[str(ROOT)],
     binaries=[],
     datas=[
@@ -65,7 +65,8 @@ a = Analysis(
         # pyautogui / PIL
         'pyautogui',
         'PIL',
-        # Agent commands
+        # Agent entrypoint + commands
+        'agent.__main__',
         'agent.core.commands',
         'agent.core.commands.screenshot',
         'agent.core.commands.processes',

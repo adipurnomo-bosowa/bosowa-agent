@@ -59,11 +59,17 @@ def _deny_user_write(path: str) -> bool:
 
 
 def protect_agent_directories() -> None:
-    """Apply deny-write ACL to all agent data directories."""
-    from agent import config
-    dirs = [str(config.AGENT_DIR)]
-    # Also protect the exe directory when frozen
+    """Apply deny-write ACL to the exe installation directory only.
+
+    AGENT_DIR (C:\\ProgramData\\BosowAgent) is intentionally excluded: the agent
+    writes logs, token files, and PID files there at runtime. Denying writes to
+    Users on that directory would immediately break the running process.
+    Only the exe dir (C:\\Program Files\\BosowAgent) is hardened — that location
+    is already under Administrators control and should never be written at runtime.
+    """
     import os, sys, pathlib
+    dirs: list[str] = []
+    # Only protect the exe installation directory when running as a frozen build
     if getattr(sys, 'frozen', False):
         exe_dir = pathlib.Path(sys.executable).parent
         if exe_dir.exists():
