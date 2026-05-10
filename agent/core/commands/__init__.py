@@ -15,6 +15,7 @@ from .system_control import (
 )
 from .battery import handle_get_battery
 from .software import handle_get_software
+from .software_install import handle_install_software
 from .hardware_info import handle_get_hardware_info
 from .website_control import (
     handle_block_website,
@@ -37,6 +38,7 @@ COMMAND_HANDLERS = {
     'UNINSTALL_AGENT': handle_uninstall_agent,
     'GET_BATTERY': handle_get_battery,
     'GET_SOFTWARE': handle_get_software,
+    'INSTALL_SOFTWARE': handle_install_software,
     'GET_HARDWARE_INFO': handle_get_hardware_info,
     'BLOCK_WEBSITE': handle_block_website,
     'UNBLOCK_WEBSITE': handle_unblock_website,
