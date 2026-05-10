@@ -210,8 +210,8 @@ def check_and_refresh_token() -> str | None:
     expiry = get_device_token_expiry()
     if expiry:
         from datetime import datetime, timezone, timedelta
-        # Refresh if within 10 minutes of expiry
-        if datetime.now(timezone.utc) + timedelta(minutes=10) < expiry:
+        # Refresh if within 5 minutes of expiry (tokens are 15 min, check every 5 min)
+        if datetime.now(timezone.utc) + timedelta(minutes=5) < expiry:
             return token  # still valid
 
     refresh = get_refresh_token()

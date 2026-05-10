@@ -116,7 +116,7 @@ SOCKET_URL = SERVER_URL  # python-socketio connects to the same host
 # ---------------------------------------------------------------------------
 HTTP_TIMEOUT = 15           # seconds
 HEARTBEAT_INTERVAL = 30      # seconds
-TOKEN_REFRESH_INTERVAL = 3600  # check token expiry every hour
+TOKEN_REFRESH_INTERVAL = 300   # check token expiry every 5 min (token lifetime is 15 min)
 PIN_VALIDITY_DAYS = 7
 PIN_SETUP_TIMEOUT = 10      # seconds for server request in PIN setup
 
