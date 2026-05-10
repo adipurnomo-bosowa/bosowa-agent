@@ -5,13 +5,14 @@ Utility script to test ticket creation via the Bosowa portal API.
 Usage:
     python test_create_ticket.py <JWT_TOKEN>
 
-It sends a POST request to https://portal.veracity.id/api/tickets with a sample payload.
+It sends a POST request to the Bosowa portal API /api/tickets with a sample payload.
 """
 import sys
 import json
+import os
 import requests
 
-API_URL = "https://portal.veracity.id/api/tickets"
+API_URL = os.getenv("BOSOWA_SERVER_URL", "http://localhost:3000") + "/api/tickets"
 
 SAMPLE_TICKET = {
     "title": "PC tidak bisa connect internet",

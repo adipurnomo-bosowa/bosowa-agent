@@ -103,7 +103,7 @@ def _pick_server_url() -> str:
         val = _INSTALLER_CFG.get(key)
         if isinstance(val, str) and val.strip():
             return val
-    return 'https://portal.veracity.id'
+    return ''
 
 
 SERVER_URL = _pick_server_url().strip().rstrip('/')
