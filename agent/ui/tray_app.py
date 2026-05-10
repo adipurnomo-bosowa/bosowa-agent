@@ -11,8 +11,9 @@ from typing import Any, Callable
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from agent.api.tickets import create_ticket, list_my_tickets
+from agent.api.tickets import create_ticket, list_my_tickets, update_ticket_note
 from agent.auth.token_store import get_pin_hash_and_expiry
+from agent.core.commands.usb_control import get_usb_locked_sync, set_usb_enabled_sync
 from agent.core.hardware import get_mac_address
 from agent.utils.logger import logger
 import bcrypt
@@ -66,12 +67,15 @@ class AgentTrayApp:
         create_ticket_action = menu.addAction('Buat Tiket IT')
         list_ticket_action = menu.addAction('Tiket Saya')
         menu.addSeparator()
+        usb_unlock_action = menu.addAction('🔑 Buka USB (PIN)')
+        menu.addSeparator()
         exit_action = menu.addAction('Keluar Agent')
 
         show_dashboard.triggered.connect(self._show_desktop_app)
         show_info.triggered.connect(self._show_status)
         create_ticket_action.triggered.connect(self._show_create_ticket_dialog)
         list_ticket_action.triggered.connect(self._show_list_tickets_dialog)
+        usb_unlock_action.triggered.connect(self._show_usb_pin_unlock)
         exit_action.triggered.connect(self._exit_agent)
         self._tray.setContextMenu(menu)
         self._tray.activated.connect(self._on_tray_activated)
@@ -635,16 +639,19 @@ class AgentTrayApp:
         dlg = QtWidgets.QDialog()
         dlg.setWindowTitle('Tiket Saya')
         dlg.setWindowIcon(self._make_icon())
-        dlg.resize(760, 420)
+        dlg.resize(780, 460)
         layout = QtWidgets.QVBoxLayout(dlg)
 
         table = QtWidgets.QTableWidget()
-        table.setColumnCount(6)
-        table.setHorizontalHeaderLabels(['ID', 'Status', 'Prioritas', 'Kategori', 'Judul', 'Dibuat'])
-        table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.Stretch)
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(['Status', 'Prioritas', 'Kategori', 'Judul', 'Dibuat'])
+        table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.Stretch)
         table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        table.setToolTip('Klik baris untuk lihat detail / balas catatan admin')
         layout.addWidget(table)
+
+        ticket_data: list[dict] = []
 
         btn_row = QtWidgets.QHBoxLayout()
         refresh_btn = QtWidgets.QPushButton('Refresh')
@@ -658,6 +665,8 @@ class AgentTrayApp:
         def load() -> None:
             try:
                 tickets = list_my_tickets()
+                ticket_data.clear()
+                ticket_data.extend(tickets)
                 table.setRowCount(len(tickets))
                 for i, t in enumerate(tickets):
                     created = t.get('createdAt')
@@ -666,7 +675,6 @@ class AgentTrayApp:
                     except Exception:
                         created_fmt = str(created or '-')
                     values = [
-                        str(t.get('id', '-')),
                         str(t.get('status', '-')),
                         str(t.get('priority', '-')),
                         str(t.get('category', '-')),
@@ -674,14 +682,206 @@ class AgentTrayApp:
                         created_fmt,
                     ]
                     for col, val in enumerate(values):
-                        table.setItem(i, col, QtWidgets.QTableWidgetItem(val))
+                        item = QtWidgets.QTableWidgetItem(val)
+                        # Highlight rows with adminNote
+                        if t.get('adminNote'):
+                            item.setForeground(QtGui.QColor('#64B5F6'))
+                        table.setItem(i, col, item)
             except Exception as e:
                 logger.warning('List tickets failed: %s', e)
                 QtWidgets.QMessageBox.critical(dlg, 'Gagal', str(e))
 
+        def on_row_clicked(row: int) -> None:
+            if row < 0 or row >= len(ticket_data):
+                return
+            self._show_ticket_detail(ticket_data[row], load)
+
+        table.cellClicked.connect(on_row_clicked)
         refresh_btn.clicked.connect(load)
         load()
         dlg.exec_()
+
+    def _show_ticket_detail(self, ticket: dict, refresh_callback=None) -> None:
+        dlg = QtWidgets.QDialog()
+        dlg.setWindowTitle(f'Detail Tiket — {ticket.get("title", "")}')
+        dlg.setWindowIcon(self._make_icon())
+        dlg.resize(520, 420)
+        layout = QtWidgets.QVBoxLayout(dlg)
+        layout.setSpacing(10)
+
+        def row(label: str, value: str) -> QtWidgets.QWidget:
+            w = QtWidgets.QWidget()
+            h = QtWidgets.QHBoxLayout(w)
+            h.setContentsMargins(0, 0, 0, 0)
+            lbl = QtWidgets.QLabel(label + ':')
+            lbl.setFixedWidth(90)
+            lbl.setStyleSheet('color: #90CAF9; font-size: 12px; font-weight: 600;')
+            val = QtWidgets.QLabel(value or '—')
+            val.setWordWrap(True)
+            val.setStyleSheet('color: #E2E8F0; font-size: 12px;')
+            h.addWidget(lbl)
+            h.addWidget(val, 1)
+            return w
+
+        layout.addWidget(row('Status', ticket.get('status', '')))
+        layout.addWidget(row('Prioritas', ticket.get('priority', '')))
+        layout.addWidget(row('Kategori', ticket.get('category', '')))
+        layout.addWidget(row('Judul', ticket.get('title', '')))
+
+        desc_label = QtWidgets.QLabel('Deskripsi:')
+        desc_label.setStyleSheet('color: #90CAF9; font-size: 12px; font-weight: 600;')
+        layout.addWidget(desc_label)
+        desc_text = QtWidgets.QPlainTextEdit(ticket.get('description', ''))
+        desc_text.setReadOnly(True)
+        desc_text.setMaximumHeight(70)
+        desc_text.setStyleSheet('background: rgba(255,255,255,0.04); color: #CBD5E1; font-size: 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;')
+        layout.addWidget(desc_text)
+
+        admin_note = ticket.get('adminNote') or ''
+        if admin_note:
+            sep = QtWidgets.QFrame()
+            sep.setFrameShape(QtWidgets.QFrame.HLine)
+            sep.setStyleSheet('background: rgba(100,181,246,0.3);')
+            layout.addWidget(sep)
+            admin_lbl = QtWidgets.QLabel('📋 Catatan Admin:')
+            admin_lbl.setStyleSheet('color: #64B5F6; font-size: 12px; font-weight: 700;')
+            layout.addWidget(admin_lbl)
+            admin_text = QtWidgets.QPlainTextEdit(admin_note)
+            admin_text.setReadOnly(True)
+            admin_text.setMaximumHeight(70)
+            admin_text.setStyleSheet('background: rgba(30,136,229,0.08); color: #90CAF9; font-size: 12px; border: 1px solid rgba(30,136,229,0.2); border-radius: 6px;')
+            layout.addWidget(admin_text)
+
+        sep2 = QtWidgets.QFrame()
+        sep2.setFrameShape(QtWidgets.QFrame.HLine)
+        sep2.setStyleSheet('background: rgba(255,255,255,0.1);')
+        layout.addWidget(sep2)
+
+        reply_lbl = QtWidgets.QLabel('💬 Pesan kamu ke admin:')
+        reply_lbl.setStyleSheet('color: #A5B4FC; font-size: 12px; font-weight: 600;')
+        layout.addWidget(reply_lbl)
+
+        existing_note = ticket.get('userNote') or ''
+        reply_input = QtWidgets.QPlainTextEdit(existing_note)
+        reply_input.setPlaceholderText('Tulis pesan atau update ke admin di sini…')
+        reply_input.setMaximumHeight(80)
+        reply_input.setStyleSheet('background: rgba(255,255,255,0.06); color: #E2E8F0; font-size: 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 8px;')
+        layout.addWidget(reply_input)
+
+        status_lbl = QtWidgets.QLabel('')
+        status_lbl.setStyleSheet('font-size: 11px; color: #90CAF9;')
+        layout.addWidget(status_lbl)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        save_btn = QtWidgets.QPushButton('Kirim Pesan')
+        close_btn2 = QtWidgets.QPushButton('Tutup')
+        btn_row.addWidget(save_btn)
+        btn_row.addStretch(1)
+        btn_row.addWidget(close_btn2)
+        layout.addLayout(btn_row)
+        close_btn2.clicked.connect(dlg.accept)
+
+        def save_note() -> None:
+            note = reply_input.toPlainText().strip()
+            save_btn.setEnabled(False)
+            status_lbl.setText('Mengirim…')
+
+            def do_save():
+                ok = False
+                try:
+                    ok = update_ticket_note(ticket['id'], note)
+                except Exception as e:
+                    logger.warning('update_ticket_note failed: %s', e)
+                QtCore.QMetaObject.invokeMethod(
+                    dlg, '_on_save_done',
+                    QtCore.Qt.QueuedConnection,
+                    QtCore.Q_ARG(bool, ok),
+                )
+
+            dlg._on_save_done = lambda ok: (  # type: ignore[attr-defined]
+                status_lbl.setText('✅ Pesan terkirim.' if ok else '❌ Gagal mengirim.'),
+                save_btn.setEnabled(True),
+                (refresh_callback() if refresh_callback and ok else None),
+            )
+
+            threading.Thread(target=do_save, daemon=True).start()
+
+        save_btn.clicked.connect(save_note)
+        dlg.exec_()
+
+    def _show_usb_pin_unlock(self) -> None:
+        """Allow user to unlock USB mass storage using cached PIN (works offline)."""
+        locked = get_usb_locked_sync()
+        if locked is None:
+            QtWidgets.QMessageBox.warning(
+                None,
+                'USB Status',
+                'Tidak dapat membaca status USB dari registry.\n'
+                'Pastikan agent berjalan sebagai Administrator.',
+            )
+            return
+        if not locked:
+            QtWidgets.QMessageBox.information(
+                None,
+                'USB Sudah Aktif',
+                'USB mass storage sudah aktif — tidak perlu dibuka.',
+            )
+            return
+
+        pin_data = get_pin_hash_and_expiry()
+        if not pin_data:
+            answer = QtWidgets.QMessageBox.question(
+                None,
+                'PIN Tidak Tersedia',
+                'PIN belum diset atau sudah expired.\n\n'
+                'Ingin membuat tiket IT untuk meminta admin membuka USB?',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes,
+            )
+            if answer == QtWidgets.QMessageBox.Yes:
+                self._show_create_ticket_dialog()
+            return
+
+        pin_hash, valid_until = pin_data
+        pin, ok = QtWidgets.QInputDialog.getText(
+            None,
+            'Buka USB dengan PIN',
+            f'Masukkan PIN untuk mengaktifkan USB mass storage:\n(PIN berlaku hingga {valid_until.strftime("%Y-%m-%d %H:%M")})',
+            QtWidgets.QLineEdit.Password,
+        )
+        if not ok:
+            return
+
+        try:
+            valid_pin = bool(pin.strip()) and bcrypt.checkpw(pin.strip().encode(), pin_hash)
+        except Exception as e:
+            logger.warning('PIN check failed: %s', e)
+            valid_pin = False
+
+        if not valid_pin:
+            QtWidgets.QMessageBox.critical(None, 'PIN Salah', 'PIN tidak valid.')
+            return
+
+        success = set_usb_enabled_sync()
+        if success:
+            QtWidgets.QMessageBox.information(
+                None,
+                'USB Diaktifkan',
+                'USB mass storage berhasil diaktifkan.\n'
+                'Restart mungkin diperlukan agar perubahan berlaku penuh.',
+            )
+        else:
+            answer = QtWidgets.QMessageBox.question(
+                None,
+                'Gagal Mengaktifkan USB',
+                'Gagal mengubah registry.\n'
+                'Agent mungkin tidak memiliki hak administrator.\n\n'
+                'Ingin membuat tiket IT untuk meminta bantuan admin?',
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes,
+            )
+            if answer == QtWidgets.QMessageBox.Yes:
+                self._show_create_ticket_dialog()
 
     def _exit_agent(self) -> None:
         # Require PIN to stop agent (prevents users from killing background service).

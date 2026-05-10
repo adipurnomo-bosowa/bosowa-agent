@@ -14,10 +14,19 @@ import sys
 logger = logging.getLogger('BosowAgent.file_acl')
 
 
+def _is_relative_to(path: 'pathlib.Path', parent: 'pathlib.Path') -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
 def _deny_user_write(path: str) -> bool:
     """Deny FILE_GENERIC_WRITE and DELETE for the 'Users' group on *path*.
 
     Returns True on success, False if not on Windows, missing pywin32, or no admin.
+    Skips if an equivalent DENY ACE already exists (prevents duplicate accumulation).
     """
     if sys.platform != 'win32':
         return False
@@ -37,8 +46,19 @@ def _deny_user_write(path: str) -> bool:
         if dacl is None:
             dacl = win32security.ACL()
 
-        # Add DENY ACE for Users: no write, no delete, no change permissions
         deny_mask = con.FILE_GENERIC_WRITE | con.DELETE | con.WRITE_DAC | con.WRITE_OWNER
+
+        # Skip if an equivalent DENY ACE already exists to prevent duplicates
+        ace_count = dacl.GetAceCount()
+        for i in range(ace_count):
+            ace = dacl.GetAce(i)
+            ace_type = ace[0][0]
+            ace_sid = ace[2]
+            # ACCESS_DENIED_ACE_TYPE = 1
+            if ace_type == 1 and ace_sid == users_sid:
+                logger.debug('ACL already set on %s — skipping', path)
+                return True
+
         dacl.AddAccessDeniedAceEx(
             win32security.ACL_REVISION,
             con.OBJECT_INHERIT_ACE | con.CONTAINER_INHERIT_ACE,
@@ -70,9 +90,19 @@ def protect_agent_directories() -> None:
     import os, sys, pathlib
     dirs: list[str] = []
     # Only protect the exe installation directory when running as a frozen build
+    # AND only if the exe is under a production install path (Program Files / ProgramData).
+    # This prevents the dev dist/ folder from getting a DENY ACE during development.
     if getattr(sys, 'frozen', False):
         exe_dir = pathlib.Path(sys.executable).parent
-        if exe_dir.exists():
+        production_roots = (
+            pathlib.Path(os.environ.get('PROGRAMFILES', 'C:/Program Files')),
+            pathlib.Path(os.environ.get('PROGRAMFILES(X86)', 'C:/Program Files (x86)')),
+            pathlib.Path(os.environ.get('PROGRAMDATA', 'C:/ProgramData')),
+        )
+        is_production = any(
+            _is_relative_to(exe_dir, root) for root in production_roots
+        )
+        if is_production and exe_dir.exists():
             dirs.append(str(exe_dir))
 
     for d in dirs:

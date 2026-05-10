@@ -174,7 +174,6 @@ class LockScreenOverlay:
         window.setWindowFlags(
             QtCore.Qt.WindowStaysOnTopHint
             | QtCore.Qt.FramelessWindowHint
-            | QtCore.Qt.WindowDoesNotAcceptFocus
         )
         window.setStyleSheet(f'background-color: {config.OVERLAY_LOCK_COLOR};')
         window.setContextMenuPolicy(QtCore.Qt.NoContextMenu)
@@ -630,6 +629,7 @@ class LockScreenOverlay:
         except Exception:
             pass
         self._update_status('🔴 Offline – Menunggu autentikasi...', '#EF5350')
+        self._email_input.setFocus()
 
     def _web_login_flow(self, session_code: str) -> None:
         """Init session on server, open browser to /agent-link, then poll for claim."""
@@ -814,6 +814,7 @@ class LockScreenOverlay:
             QtCore.QTimer.singleShot(1500, self._close_and_continue)
         else:
             self._update_status(f'🔴 {error}', '#EF5350')
+            self._email_input.setFocus()
 
     def _handle_user_result(self, user_json: str) -> None:
         logger.info('_handle_user_result: %s', user_json[:100])

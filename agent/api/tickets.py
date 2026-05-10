@@ -73,3 +73,15 @@ def list_my_tickets(status: str | None = None, category: str | None = None) -> l
         raise RuntimeError(f'Gagal ambil tiket ({resp.status_code}): {err}')
     body = resp.json()
     return body.get('tickets', [])
+
+
+def update_ticket_note(ticket_id: str, user_note: str) -> bool:
+    """Set userNote on a ticket (employee reply to admin)."""
+    resp = requests.patch(
+        f'{config.API_BASE}/tickets/{ticket_id}',
+        headers=_headers(),
+        json={'userNote': user_note.strip()},
+        timeout=config.HTTP_TIMEOUT,
+        verify=certifi.where(),
+    )
+    return resp.ok

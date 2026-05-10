@@ -56,6 +56,42 @@ async def handle_usb_control(payload: dict) -> dict:
     }
 
 
+def get_usb_locked_sync() -> bool | None:
+    """Return True if USB mass storage is locked (Start=4), False if enabled, None on error."""
+    import winreg
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            USB_REGISTRY_PATH,
+            0,
+            winreg.KEY_READ,
+        )
+        val, _ = winreg.QueryValueEx(key, 'Start')
+        winreg.CloseKey(key)
+        return val == 4
+    except Exception:
+        return None
+
+
+def set_usb_enabled_sync() -> bool:
+    """Enable USB mass storage (Start=3). Returns True on success."""
+    import winreg
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            USB_REGISTRY_PATH,
+            0,
+            winreg.KEY_SET_VALUE | winreg.KEY_READ,
+        )
+        winreg.SetValueEx(key, 'Start', 0, winreg.REG_DWORD, 3)
+        winreg.CloseKey(key)
+        logger.info('USB storage enabled via PIN unlock')
+        return True
+    except Exception as e:
+        logger.warning('set_usb_enabled_sync failed: %s', e)
+        return False
+
+
 async def get_usb_status() -> dict:
     """Return current USB storage state."""
     import winreg
