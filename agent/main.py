@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import sys
 import os
 import atexit
+from pathlib import Path
 
 from agent import config
 from agent.auth.login import AuthTokens
@@ -18,6 +20,30 @@ from agent.utils.startup import register_all, is_registered
 _tray: AgentTrayApp | None = None
 _service_loop: asyncio.AbstractEventLoop | None = None
 _stop_event: asyncio.Event | None = None
+
+WATCHDOG_PID_FILE = config.AGENT_DIR / 'watchdog.pid'
+
+
+def _spawn_watchdog() -> None:
+    """Launch a detached watchdog process that will restart us if we die."""
+    try:
+        from agent.utils.startup import get_exe_path
+        exe = get_exe_path()
+        my_pid = os.getpid()
+        creationflags = 0
+        if sys.platform == 'win32':
+            creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+
+        if getattr(sys, 'frozen', False):
+            cmd = [exe, '--watchdog', str(my_pid)]
+        else:
+            root = Path(__file__).resolve().parents[2]
+            cmd = [exe, '-m', 'agent.__main__', '--watchdog', str(my_pid)]
+
+        subprocess.Popen(cmd, creationflags=creationflags, close_fds=True)
+        logger.info('Watchdog spawned (monitoring PID %d)', my_pid)
+    except Exception as e:
+        logger.warning('Failed to spawn watchdog: %s', e)
 
 
 def main() -> None:
@@ -35,6 +61,16 @@ def main() -> None:
         register_all()
     else:
         logger.debug('Agent already registered for startup')
+
+    # Apply filesystem ACL protection (deny Users write/delete on agent dirs)
+    try:
+        from agent.utils.file_acl import protect_agent_directories
+        protect_agent_directories()
+    except Exception as e:
+        logger.debug('file_acl protection skipped: %s', e)
+
+    # Spawn watchdog companion process
+    _spawn_watchdog()
 
     # ALWAYS show overlay on startup — this is a lock screen, not optional
     _run_auth_flow()
