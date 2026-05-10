@@ -31,14 +31,15 @@ def record_link_open(url: str, sample_detail: str | None = None) -> None:
     enqueue_audit('LINK', key, count=1, sample_detail=sample_detail or url)
 
 
-def record_app_focus(exe_path: str) -> None:
+def record_app_focus(exe_path: str, *, emit_sample: bool = True) -> None:
     exe = (exe_path or '').strip()
     if not exe:
         return
     base = exe.replace('\\', '/').split('/')[-1][:120]
     if not base:
         return
-    enqueue_audit('APP', base.lower(), count=1, sample_detail=exe[:400])
+    # Only pass sampleDetail on app-change events to keep sample table sparse
+    enqueue_audit('APP', base.lower(), count=1, sample_detail=exe[:400] if emit_sample else None)
 
 
 def enqueue_audit(

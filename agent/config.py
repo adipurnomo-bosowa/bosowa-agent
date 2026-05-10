@@ -117,6 +117,7 @@ SOCKET_URL = SERVER_URL  # python-socketio connects to the same host
 HTTP_TIMEOUT = 15           # seconds
 HEARTBEAT_INTERVAL = 30      # seconds
 TOKEN_REFRESH_INTERVAL = 240   # check token expiry every 4 min (token lifetime is 15 min)
+AUDIT_SAMPLE_INTERVAL = 10    # seconds between foreground-app samples (1 count = 10 s of focus)
 PIN_VALIDITY_DAYS = 7
 PIN_SETUP_TIMEOUT = 10      # seconds for server request in PIN setup
 
@@ -152,6 +153,7 @@ __all__ = [
     'HTTP_TIMEOUT',
     'HEARTBEAT_INTERVAL',
     'TOKEN_REFRESH_INTERVAL',
+    'AUDIT_SAMPLE_INTERVAL',
     'PIN_VALIDITY_DAYS',
     'PIN_SETUP_TIMEOUT',
     'DEV_MODE',

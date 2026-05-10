@@ -123,18 +123,21 @@ class AgentService:
             await asyncio.to_thread(flush_audit_buffer, self.tokens.token)
 
     async def _focus_sample_loop(self) -> None:
+        # 1 count = AUDIT_SAMPLE_INTERVAL seconds of foreground focus.
+        # sampleDetail written only on app-change to keep sample table sparse.
+        from agent.core.audit_client import record_app_focus
         while self._running:
-            await asyncio.sleep(180)
+            await asyncio.sleep(config.AUDIT_SAMPLE_INTERVAL)
             if not self._running:
                 break
-            exe = await asyncio.to_thread(get_foreground_exe_path)
-            if exe and exe != self._last_exe:
-                self._last_exe = exe
-                try:
-                    from agent.core.audit_client import record_app_focus
-                    record_app_focus(exe)
-                except Exception:
-                    pass
+            try:
+                exe = await asyncio.to_thread(get_foreground_exe_path)
+                if exe:
+                    changed = exe != self._last_exe
+                    self._last_exe = exe
+                    record_app_focus(exe, emit_sample=changed)
+            except Exception:
+                pass
 
     async def _hardware_refresh_loop(self) -> None:
         """Kirim hardware snapshot lengkap ke server setiap 1 jam."""
