@@ -839,7 +839,28 @@ class LockScreenOverlay:
         if self._window:
             logger.info('Closing window...')
             try:
-                # Make sure the closeEvent ignore handler doesn't block programmatic close.
+                # Strip WindowStaysOnTopHint + FramelessWindowHint before closing.
+                # On Windows, a topmost frameless window can hold mouse/keyboard
+                # input focus even after hide(), leaving the desktop unresponsive.
+                if sys.platform == 'win32':
+                    try:
+                        import ctypes
+                        hwnd = int(self._window.winId())
+                        # Remove WS_EX_TOPMOST (8) and WS_EX_NOACTIVATE (0x8000000)
+                        GWL_EXSTYLE = -20
+                        cur = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                        ctypes.windll.user32.SetWindowLongW(
+                            hwnd, GWL_EXSTYLE,
+                            cur & ~0x00000008 & ~0x08000000
+                        )
+                        # Move to non-topmost z-order
+                        HWND_NOTOPMOST = -2
+                        ctypes.windll.user32.SetWindowPos(
+                            hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, 0x0003  # SWP_NOMOVE|SWP_NOSIZE
+                        )
+                    except Exception as e:
+                        logger.debug('Win32 topmost clear failed: %s', e)
+
                 self._window.closeEvent = lambda e: e.accept()
                 self._window.hide()
                 self._window.close()
@@ -847,12 +868,22 @@ class LockScreenOverlay:
                 logger.warning('Error while closing window: %s', e)
             self._window = None
             logger.info('Window closed')
+
+        # Restore focus to the Windows shell so the desktop is interactive
+        if sys.platform == 'win32':
+            try:
+                import ctypes
+                shell = ctypes.windll.user32.GetShellWindow()
+                if shell:
+                    ctypes.windll.user32.SetForegroundWindow(shell)
+            except Exception as e:
+                logger.debug('Shell focus restore failed: %s', e)
+
         # Force-quit Qt event loop (setQuitOnLastWindowClosed=False so we must quit manually)
         app = QtWidgets.QApplication.instance()
         if app is not None:
             try:
                 app.exit(0)
-                # Belt-and-suspenders: if exit(0) didn't take effect, also call quit().
                 QtCore.QTimer.singleShot(100, app.quit)
             except Exception as e:
                 logger.warning('Error while exiting Qt app: %s', e)
