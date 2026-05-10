@@ -715,110 +715,209 @@ class AgentTrayApp:
 
     def _show_ticket_detail(self, ticket: dict, refresh_callback=None) -> None:
         dlg = QtWidgets.QDialog()
-        dlg.setWindowTitle(f'Detail Tiket — {ticket.get("title", "")}')
+        dlg.setWindowTitle(ticket.get('title', 'Detail Tiket'))
         dlg.setWindowIcon(self._make_icon())
-        dlg.resize(520, 420)
-        layout = QtWidgets.QVBoxLayout(dlg)
-        layout.setSpacing(10)
+        dlg.setMinimumSize(480, 540)
+        dlg.resize(520, 580)
 
-        def row(label: str, value: str) -> QtWidgets.QWidget:
-            w = QtWidgets.QWidget()
-            h = QtWidgets.QHBoxLayout(w)
-            h.setContentsMargins(0, 0, 0, 0)
-            lbl = QtWidgets.QLabel(label + ':')
-            lbl.setFixedWidth(90)
-            lbl.setStyleSheet('color: #90CAF9; font-size: 12px; font-weight: 600;')
-            val = QtWidgets.QLabel(value or '—')
-            val.setWordWrap(True)
-            val.setStyleSheet('color: #E2E8F0; font-size: 12px;')
-            h.addWidget(lbl)
-            h.addWidget(val, 1)
-            return w
+        outer = QtWidgets.QVBoxLayout(dlg)
+        outer.setSpacing(0)
+        outer.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(row('Status', ticket.get('status', '')))
-        layout.addWidget(row('Prioritas', ticket.get('priority', '')))
-        layout.addWidget(row('Kategori', ticket.get('category', '')))
-        layout.addWidget(row('Judul', ticket.get('title', '')))
+        # ── Header ───────────────────────────────────────────────
+        header_w = QtWidgets.QWidget()
+        header_w.setStyleSheet('background: #1A2744; border-bottom: 1px solid rgba(255,255,255,0.1);')
+        header_lay = QtWidgets.QVBoxLayout(header_w)
+        header_lay.setContentsMargins(16, 14, 16, 12)
+        header_lay.setSpacing(6)
 
-        desc_label = QtWidgets.QLabel('Deskripsi:')
-        desc_label.setStyleSheet('color: #90CAF9; font-size: 12px; font-weight: 600;')
-        layout.addWidget(desc_label)
-        desc_text = QtWidgets.QPlainTextEdit(ticket.get('description', ''))
-        desc_text.setReadOnly(True)
-        desc_text.setMaximumHeight(70)
-        desc_text.setStyleSheet('background: rgba(255,255,255,0.04); color: #CBD5E1; font-size: 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;')
-        layout.addWidget(desc_text)
+        title_lbl = QtWidgets.QLabel(ticket.get('title', ''))
+        title_lbl.setWordWrap(True)
+        title_lbl.setStyleSheet('color: #E2E8F0; font-size: 14px; font-weight: 700;')
+        header_lay.addWidget(title_lbl)
 
-        admin_note = ticket.get('adminNote') or ''
+        meta_row = QtWidgets.QHBoxLayout()
+        meta_row.setSpacing(8)
+
+        status_val = ticket.get('status', '')
+        status_colors = {'OPEN': '#34D399', 'IN_PROGRESS': '#FBBF24', 'CLOSED': '#94A3B8', 'RESOLVED': '#60A5FA'}
+        s_color = status_colors.get(status_val, '#94A3B8')
+        status_badge = QtWidgets.QLabel(status_val)
+        status_badge.setStyleSheet(
+            f'color: {s_color}; background: rgba(255,255,255,0.07); font-size: 10px; font-weight: 700;'
+            f' padding: 2px 8px; border-radius: 10px; border: 1px solid {s_color}44;'
+        )
+        meta_row.addWidget(status_badge)
+
+        cat_lbl = QtWidgets.QLabel(ticket.get('category', ''))
+        cat_lbl.setStyleSheet('color: #94A3B8; font-size: 11px;')
+        meta_row.addWidget(cat_lbl)
+
+        pri_val = ticket.get('priority', '')
+        pri_colors = {'HIGH': '#F87171', 'MEDIUM': '#FBBF24', 'LOW': '#60A5FA'}
+        p_color = pri_colors.get(pri_val, '#94A3B8')
+        pri_lbl = QtWidgets.QLabel(f'● {pri_val}')
+        pri_lbl.setStyleSheet(f'color: {p_color}; font-size: 11px; font-weight: 600;')
+        meta_row.addWidget(pri_lbl)
+        meta_row.addStretch()
+        header_lay.addLayout(meta_row)
+        outer.addWidget(header_w)
+
+        # ── Thread area ───────────────────────────────────────────
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet('background: #0F1729;')
+
+        thread_w = QtWidgets.QWidget()
+        thread_w.setStyleSheet('background: #0F1729;')
+        thread_lay = QtWidgets.QVBoxLayout(thread_w)
+        thread_lay.setContentsMargins(14, 14, 14, 14)
+        thread_lay.setSpacing(10)
+
+        def add_bubble(text: str, sender: str, align_right: bool,
+                       bg: str, text_color: str = '#CBD5E1', label_color: str = '#64748B') -> None:
+            container_w = QtWidgets.QWidget()
+            container_h = QtWidgets.QHBoxLayout(container_w)
+            container_h.setContentsMargins(0, 0, 0, 0)
+
+            bubble = QtWidgets.QWidget()
+            bubble.setMaximumWidth(360)
+            b_lay = QtWidgets.QVBoxLayout(bubble)
+            b_lay.setContentsMargins(12, 8, 12, 8)
+            b_lay.setSpacing(4)
+
+            sender_lbl = QtWidgets.QLabel(sender)
+            sender_lbl.setStyleSheet(f'color: {label_color}; font-size: 10px; font-weight: 700;')
+            b_lay.addWidget(sender_lbl)
+
+            msg_lbl = QtWidgets.QLabel(text)
+            msg_lbl.setWordWrap(True)
+            msg_lbl.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+            msg_lbl.setStyleSheet(f'color: {text_color}; font-size: 12px;')
+            b_lay.addWidget(msg_lbl)
+
+            bubble.setStyleSheet(f'background: {bg}; border-radius: 10px;')
+
+            if align_right:
+                container_h.addStretch()
+                container_h.addWidget(bubble)
+            else:
+                container_h.addWidget(bubble)
+                container_h.addStretch()
+
+            thread_lay.addWidget(container_w)
+
+        description = ticket.get('description', '')
+        if description:
+            add_bubble(description, 'Kamu', align_right=True,
+                       bg='#1E3A5F', text_color='#CBD5E1', label_color='#60A5FA')
+
+        admin_note = ticket.get('adminNote', '')
         if admin_note:
-            sep = QtWidgets.QFrame()
-            sep.setFrameShape(QtWidgets.QFrame.HLine)
-            sep.setStyleSheet('background: rgba(100,181,246,0.3);')
-            layout.addWidget(sep)
-            admin_lbl = QtWidgets.QLabel('📋 Catatan Admin:')
-            admin_lbl.setStyleSheet('color: #64B5F6; font-size: 12px; font-weight: 700;')
-            layout.addWidget(admin_lbl)
-            admin_text = QtWidgets.QPlainTextEdit(admin_note)
-            admin_text.setReadOnly(True)
-            admin_text.setMaximumHeight(70)
-            admin_text.setStyleSheet('background: rgba(30,136,229,0.08); color: #90CAF9; font-size: 12px; border: 1px solid rgba(30,136,229,0.2); border-radius: 6px;')
-            layout.addWidget(admin_text)
+            add_bubble(admin_note, 'Admin', align_right=False,
+                       bg='rgba(30,100,200,0.18)', text_color='#90CAF9', label_color='#60A5FA')
 
-        sep2 = QtWidgets.QFrame()
-        sep2.setFrameShape(QtWidgets.QFrame.HLine)
-        sep2.setStyleSheet('background: rgba(255,255,255,0.1);')
-        layout.addWidget(sep2)
+        user_note = ticket.get('userNote', '')
+        if user_note:
+            add_bubble(user_note, 'Balasan kamu', align_right=True,
+                       bg='rgba(52,180,130,0.15)', text_color='#6EE7B7', label_color='#34D399')
 
-        reply_lbl = QtWidgets.QLabel('💬 Pesan kamu ke admin:')
-        reply_lbl.setStyleSheet('color: #A5B4FC; font-size: 12px; font-weight: 600;')
-        layout.addWidget(reply_lbl)
+        if not description and not admin_note and not user_note:
+            empty_lbl = QtWidgets.QLabel('Belum ada pesan.')
+            empty_lbl.setStyleSheet('color: #475569; font-size: 12px;')
+            empty_lbl.setAlignment(QtCore.Qt.AlignCenter)
+            thread_lay.addWidget(empty_lbl)
 
-        existing_note = ticket.get('userNote') or ''
-        reply_input = QtWidgets.QPlainTextEdit(existing_note)
-        reply_input.setPlaceholderText('Tulis pesan atau update ke admin di sini…')
-        reply_input.setMaximumHeight(80)
-        reply_input.setStyleSheet('background: rgba(255,255,255,0.06); color: #E2E8F0; font-size: 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 4px 8px;')
-        layout.addWidget(reply_input)
+        thread_lay.addStretch()
+        scroll.setWidget(thread_w)
+        outer.addWidget(scroll, 1)
 
-        status_lbl = QtWidgets.QLabel('')
-        status_lbl.setStyleSheet('font-size: 11px; color: #90CAF9;')
-        layout.addWidget(status_lbl)
+        # ── Input area ────────────────────────────────────────────
+        input_w = QtWidgets.QWidget()
+        input_w.setStyleSheet('background: #1A2235; border-top: 1px solid rgba(255,255,255,0.08);')
+        input_lay = QtWidgets.QVBoxLayout(input_w)
+        input_lay.setContentsMargins(12, 10, 12, 12)
+        input_lay.setSpacing(8)
+
+        reply_input = QtWidgets.QPlainTextEdit()
+        reply_input.setPlaceholderText('Ketik pesan untuk admin...')
+        reply_input.setMaximumHeight(72)
+        reply_input.setStyleSheet(
+            'background: rgba(255,255,255,0.05); color: #E2E8F0; font-size: 12px;'
+            ' border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 4px 8px;'
+        )
+        input_lay.addWidget(reply_input)
 
         btn_row = QtWidgets.QHBoxLayout()
-        save_btn = QtWidgets.QPushButton('Kirim Pesan')
-        close_btn2 = QtWidgets.QPushButton('Tutup')
-        btn_row.addWidget(save_btn)
-        btn_row.addStretch(1)
-        btn_row.addWidget(close_btn2)
-        layout.addLayout(btn_row)
-        close_btn2.clicked.connect(dlg.accept)
+        btn_row.setSpacing(8)
+
+        status_lbl = QtWidgets.QLabel('')
+        status_lbl.setStyleSheet('color: #475569; font-size: 11px;')
+        btn_row.addWidget(status_lbl, 1)
+
+        close_btn = QtWidgets.QPushButton('Tutup')
+        close_btn.setStyleSheet(
+            'QPushButton { background: rgba(255,255,255,0.06); color: #94A3B8;'
+            ' border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;'
+            ' padding: 6px 16px; font-size: 12px; }'
+            ' QPushButton:hover { background: rgba(255,255,255,0.1); }'
+        )
+        close_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(close_btn)
+
+        send_btn = QtWidgets.QPushButton('Kirim')
+        send_btn.setStyleSheet(
+            'QPushButton { background: #2563EB; color: white; border: none;'
+            ' border-radius: 6px; padding: 6px 20px; font-size: 12px; font-weight: 600; }'
+            ' QPushButton:hover { background: #1D4ED8; }'
+            ' QPushButton:disabled { background: #1e3a6e; color: #64748B; }'
+        )
+        btn_row.addWidget(send_btn)
+        input_lay.addLayout(btn_row)
+        outer.addWidget(input_w)
+
+        # ── Thread-safe signal ────────────────────────────────────
+        class _Sig(QtCore.QObject):
+            done = QtCore.pyqtSignal(bool)
+
+        sig = _Sig()
+
+        def on_save_done(ok: bool) -> None:
+            send_btn.setEnabled(True)
+            if ok:
+                status_lbl.setText('Pesan terkirim.')
+                status_lbl.setStyleSheet('color: #34D399; font-size: 11px;')
+                if refresh_callback:
+                    refresh_callback()
+            else:
+                status_lbl.setText('Gagal mengirim. Coba lagi.')
+                status_lbl.setStyleSheet('color: #F87171; font-size: 11px;')
+
+        sig.done.connect(on_save_done)
 
         def save_note() -> None:
             note = reply_input.toPlainText().strip()
-            save_btn.setEnabled(False)
-            status_lbl.setText('Mengirim…')
+            if not note:
+                status_lbl.setText('Tulis pesan dulu.')
+                status_lbl.setStyleSheet('color: #94A3B8; font-size: 11px;')
+                return
+            send_btn.setEnabled(False)
+            status_lbl.setText('Mengirim...')
+            status_lbl.setStyleSheet('color: #64748B; font-size: 11px;')
 
-            def do_save():
+            def do_save() -> None:
                 ok = False
                 try:
                     ok = update_ticket_note(ticket['id'], note)
                 except Exception as e:
                     logger.warning('update_ticket_note failed: %s', e)
-                QtCore.QMetaObject.invokeMethod(
-                    dlg, '_on_save_done',
-                    QtCore.Qt.QueuedConnection,
-                    QtCore.Q_ARG(bool, ok),
-                )
-
-            dlg._on_save_done = lambda ok: (  # type: ignore[attr-defined]
-                status_lbl.setText('✅ Pesan terkirim.' if ok else '❌ Gagal mengirim.'),
-                save_btn.setEnabled(True),
-                (refresh_callback() if refresh_callback and ok else None),
-            )
+                sig.done.emit(ok)
 
             threading.Thread(target=do_save, daemon=True).start()
 
-        save_btn.clicked.connect(save_note)
+        send_btn.clicked.connect(save_note)
         dlg.exec_()
 
     def _show_usb_pin_unlock(self) -> None:
@@ -859,10 +958,12 @@ class AgentTrayApp:
                 QtWidgets.QMessageBox.warning(
                     None,
                     'PIN Tidak Tersedia — Offline',
-                    'PIN belum diset atau sudah expired.\n'
+                    'PIN belum pernah diset untuk perangkat ini.\n'
                     'Perangkat sedang OFFLINE — tidak bisa membuat tiket.\n\n'
                     'Hubungi IT Admin / IT Staff secara langsung\n'
-                    'untuk meminta PIN perangkat Anda diset melalui Portal Bosowa.',
+                    'untuk meminta PIN diset via Portal Bosowa.\n\n'
+                    'Catatan: setelah PIN diset dan perangkat online 1x,\n'
+                    'PIN tersimpan lokal dan bisa dipakai tanpa internet.',
                 )
             return
 

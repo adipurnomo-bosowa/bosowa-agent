@@ -115,6 +115,7 @@ class LockScreenOverlay:
         self._event_filter: _OverlayEventFilter | None = None
         self._web_login_cancel = threading.Event()
         self._web_login_thread: threading.Thread | None = None
+        self._using_pin = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -163,6 +164,11 @@ class LockScreenOverlay:
         # Install event filter on app to receive cross-thread events
         self._event_filter = _OverlayEventFilter(self)
         app.installEventFilter(self._event_filter)
+        try:
+            if get_pin_hash_and_expiry() is not None:
+                self._pin_frame.setVisible(True)
+        except Exception as e:
+            logger.debug('PIN frame startup check failed: %s', e)
         app.exec_()
 
     # ------------------------------------------------------------------
@@ -739,6 +745,7 @@ class LockScreenOverlay:
         if len(pin) != 6 or not pin.isdigit():
             self._update_status('PIN harus 6 digit angka', '#EF5350')
             return
+        self._using_pin = True
         self._set_inputs_enabled(False)
         self._update_status('🟡 Memverifikasi PIN...', '#FFD54F')
         threading.Thread(target=self._do_pin_verify, args=(pin,), daemon=True).start()
@@ -814,7 +821,11 @@ class LockScreenOverlay:
             QtCore.QTimer.singleShot(1500, self._close_and_continue)
         else:
             self._update_status(f'🔴 {error}', '#EF5350')
-            self._email_input.setFocus()
+            if self._using_pin:
+                self._pin_input.setFocus()
+            else:
+                self._email_input.setFocus()
+            self._using_pin = False
 
     def _handle_user_result(self, user_json: str) -> None:
         logger.info('_handle_user_result: %s', user_json[:100])
