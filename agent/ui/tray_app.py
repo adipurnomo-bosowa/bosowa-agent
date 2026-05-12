@@ -150,8 +150,7 @@ class AgentTrayApp:
         self._update_tray_icon()
 
     def _start_badge_polling(self) -> None:
-        import threading
-        from agent.api.tickets import list_my_tickets, get_messages
+        from agent.api.tickets import get_messages
 
         def _check() -> None:
             def _bg() -> None:
