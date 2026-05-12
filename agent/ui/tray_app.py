@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from agent.api.tickets import create_ticket, list_my_tickets, update_ticket_note, start_chat, get_messages, send_message
+from agent.api.tickets import create_ticket, list_my_tickets
 from agent.auth.token_store import get_pin_hash_and_expiry
 from agent.core.commands.usb_control import get_usb_locked_sync, set_usb_enabled_sync
 from agent.core.hardware import get_mac_address
@@ -713,7 +713,6 @@ class AgentTrayApp:
         dlg.exec_()
 
     def _show_ticket_detail(self, ticket: dict, refresh_callback=None) -> None:
-        from datetime import datetime
         from agent.api.tickets import get_messages, send_message, start_chat as api_start_chat
 
         dlg = QtWidgets.QDialog()
