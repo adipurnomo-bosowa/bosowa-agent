@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from agent.api.tickets import create_ticket, list_my_tickets, update_ticket_note
+from agent.api.tickets import create_ticket, list_my_tickets, update_ticket_note, start_chat, get_messages, send_message
 from agent.auth.token_store import get_pin_hash_and_expiry
 from agent.core.commands.usb_control import get_usb_locked_sync, set_usb_enabled_sync
 from agent.core.hardware import get_mac_address
@@ -278,13 +278,14 @@ class AgentTrayApp:
         app_sub.setStyleSheet('color: #94A3B8; font-size: 11px;')
         sidebar_layout.addWidget(app_sub)
 
-        nav_titles = ['Dashboard', 'Device', 'User', 'Health Check', 'Tickets']
+        nav_titles = ['Dashboard', 'Device', 'User', 'Health Check', 'Tickets', 'Chat']
         nav_subtitles = [
             'Ringkasan endpoint, user aktif, dan health check (auto refresh 5 detik)',
             'Detail perangkat dan spesifikasi sistem',
             'Profil pengguna yang sedang login',
             'Pemeriksaan kesehatan sistem secara berkala',
             'Daftar tiket IT yang Anda buat',
+            'Diskusi langsung dengan admin IT via tiket',
         ]
 
         nav = QtWidgets.QListWidget()
@@ -476,6 +477,187 @@ class AgentTrayApp:
 
         content_stack.addWidget(tickets_page)
 
+        # ── Chat page ─────────────────────────────────────────────────────────
+        chat_page = QtWidgets.QWidget()
+        chat_layout = QtWidgets.QVBoxLayout(chat_page)
+        chat_layout.setContentsMargins(0, 0, 0, 0)
+        chat_layout.setSpacing(8)
+
+        # Ticket selector
+        chat_selector_row = QtWidgets.QHBoxLayout()
+        chat_ticket_combo = QtWidgets.QComboBox()
+        chat_ticket_combo.setPlaceholderText('Pilih tiket...')
+        chat_ticket_combo.setMinimumWidth(300)
+        chat_refresh_btn = QtWidgets.QPushButton('Refresh')
+        chat_refresh_btn.setStyleSheet(
+            'QPushButton { background: #334155; color: #E2E8F0; border-radius: 6px; padding: 6px 12px; }'
+            'QPushButton:hover { background: #475569; }'
+        )
+        chat_selector_row.addWidget(QtWidgets.QLabel('Tiket:'))
+        chat_selector_row.addWidget(chat_ticket_combo, 1)
+        chat_selector_row.addWidget(chat_refresh_btn)
+        chat_layout.addLayout(chat_selector_row)
+
+        # Start chat button (shown when chatStarted=False)
+        chat_start_btn = QtWidgets.QPushButton('Mulai Chat')
+        chat_start_btn.setVisible(False)
+        chat_layout.addWidget(chat_start_btn)
+
+        # Bubble scroll area
+        bubble_scroll = QtWidgets.QScrollArea()
+        bubble_scroll.setWidgetResizable(True)
+        bubble_scroll.setStyleSheet('QScrollArea { border: 1px solid #1F2937; border-radius: 8px; }')
+        bubble_container = QtWidgets.QWidget()
+        bubble_vbox = QtWidgets.QVBoxLayout(bubble_container)
+        bubble_vbox.setContentsMargins(8, 8, 8, 8)
+        bubble_vbox.setSpacing(6)
+        bubble_vbox.addStretch(1)
+        bubble_scroll.setWidget(bubble_container)
+        chat_layout.addWidget(bubble_scroll, 1)
+
+        # Input area
+        chat_input_row = QtWidgets.QHBoxLayout()
+        chat_input = QtWidgets.QPlainTextEdit()
+        chat_input.setMaximumHeight(64)
+        chat_input.setPlaceholderText('Tulis pesan (Enter kirim, Shift+Enter baris baru)...')
+        chat_send_btn = QtWidgets.QPushButton('Kirim')
+        chat_send_btn.setFixedWidth(80)
+        chat_input_row.addWidget(chat_input, 1)
+        chat_input_row.addWidget(chat_send_btn)
+        chat_layout.addLayout(chat_input_row)
+
+        content_stack.addWidget(chat_page)
+
+        # Internal state for chat tab
+        _chat_tickets: list[dict] = []          # full ticket objects
+        _chat_current_ticket: dict | None = None
+        _chat_poll_timer: QtCore.QTimer | None = None
+        _chat_last_message_count = [0]          # mutable int via list trick
+
+        def _build_bubble(msg: dict) -> QtWidgets.QWidget:
+            is_admin = msg.get('senderType') == 'admin'
+            try:
+                dt = datetime.fromisoformat(str(msg.get('createdAt', '')).replace('Z', '+00:00'))
+                time_str = dt.strftime('%H:%M')
+            except Exception:
+                time_str = ''
+            bubble = QtWidgets.QLabel(
+                f"<b>{msg.get('senderName', '?')} · {time_str}</b><br>{msg.get('content', '')}"
+            )
+            bubble.setWordWrap(True)
+            bubble.setTextFormat(QtCore.Qt.RichText)
+            bubble.setContentsMargins(10, 6, 10, 6)
+            if is_admin:
+                bubble.setStyleSheet(
+                    'background: rgba(6,182,212,0.12); color: #67E8F9;'
+                    ' border: 1px solid rgba(6,182,212,0.25); border-radius: 8px; font-size: 11px;'
+                )
+            else:
+                bubble.setStyleSheet(
+                    'background: rgba(34,197,94,0.12); color: #86efac;'
+                    ' border: 1px solid rgba(34,197,94,0.25); border-radius: 8px; font-size: 11px;'
+                )
+            return bubble
+
+        def _clear_bubbles() -> None:
+            while bubble_vbox.count() > 1:  # keep the trailing stretch
+                item = bubble_vbox.takeAt(0)
+                if item and item.widget():
+                    item.widget().deleteLater()
+
+        def _load_chat_messages() -> None:
+            if not _chat_current_ticket:
+                return
+            ticket_id = _chat_current_ticket['id']
+            if not _chat_current_ticket.get('chatStarted'):
+                _clear_bubbles()
+                _chat_last_message_count[0] = 0
+                chat_start_btn.setVisible(True)
+                chat_input.setEnabled(False)
+                chat_send_btn.setEnabled(False)
+                return
+            chat_start_btn.setVisible(False)
+            chat_input.setEnabled(True)
+            chat_send_btn.setEnabled(True)
+            msgs = get_messages(ticket_id)
+            if len(msgs) != _chat_last_message_count[0]:
+                _clear_bubbles()
+                for m in msgs:
+                    bubble_vbox.insertWidget(bubble_vbox.count() - 1, _build_bubble(m))
+                _chat_last_message_count[0] = len(msgs)
+                QtCore.QTimer.singleShot(50, lambda: bubble_scroll.verticalScrollBar().setValue(
+                    bubble_scroll.verticalScrollBar().maximum()
+                ))
+
+        def _load_chat_tickets() -> None:
+            try:
+                tickets = list_my_tickets()
+                _chat_tickets.clear()
+                _chat_tickets.extend(tickets)
+                chat_ticket_combo.clear()
+                for t in tickets:
+                    chat_ticket_combo.addItem(t.get('title', '(tanpa judul)'))
+                if _chat_current_ticket:
+                    ids = [t['id'] for t in _chat_tickets]
+                    if _chat_current_ticket['id'] in ids:
+                        chat_ticket_combo.setCurrentIndex(ids.index(_chat_current_ticket['id']))
+            except Exception as e:
+                logger.warning('Load chat tickets failed: %s', e)
+
+        def _on_chat_ticket_selected(idx: int) -> None:
+            nonlocal _chat_current_ticket
+            if idx < 0 or idx >= len(_chat_tickets):
+                _chat_current_ticket = None
+                return
+            _chat_current_ticket = _chat_tickets[idx]
+            _chat_last_message_count[0] = 0
+            _load_chat_messages()
+
+        def _on_start_chat() -> None:
+            if not _chat_current_ticket:
+                return
+            ok = start_chat(_chat_current_ticket['id'])
+            if ok:
+                _chat_current_ticket['chatStarted'] = True
+                _load_chat_messages()
+
+        def _on_send_chat() -> None:
+            if not _chat_current_ticket:
+                return
+            content = chat_input.toPlainText().strip()
+            if not content:
+                return
+            chat_send_btn.setEnabled(False)
+            try:
+                msg = send_message(_chat_current_ticket['id'], content)
+                if msg:
+                    bubble_vbox.insertWidget(bubble_vbox.count() - 1, _build_bubble(msg))
+                    _chat_last_message_count[0] += 1
+                    chat_input.clear()
+                    QtCore.QTimer.singleShot(50, lambda: bubble_scroll.verticalScrollBar().setValue(
+                        bubble_scroll.verticalScrollBar().maximum()
+                    ))
+            except Exception as e:
+                logger.warning('Send chat message failed: %s', e)
+            finally:
+                chat_send_btn.setEnabled(True)
+
+        class _EnterFilter(QtCore.QObject):
+            def eventFilter(self, obj, event):  # type: ignore[override]
+                if obj is chat_input and event.type() == QtCore.QEvent.KeyPress:
+                    if event.key() == QtCore.Qt.Key_Return and not (event.modifiers() & QtCore.Qt.ShiftModifier):
+                        _on_send_chat()
+                        return True
+                return super().eventFilter(obj, event)
+
+        enter_filter = _EnterFilter(chat_input)
+        chat_input.installEventFilter(enter_filter)
+
+        chat_start_btn.clicked.connect(_on_start_chat)
+        chat_send_btn.clicked.connect(_on_send_chat)
+        chat_ticket_combo.currentIndexChanged.connect(_on_chat_ticket_selected)
+        chat_refresh_btn.clicked.connect(_load_chat_tickets)
+
         refresh_btn = QtWidgets.QPushButton('Refresh Sekarang')
         panel_layout.addWidget(refresh_btn, 0, QtCore.Qt.AlignRight)
         root.addWidget(panel, 1)
@@ -504,14 +686,25 @@ class AgentTrayApp:
                 health_table.setItem(i, 2, QtWidgets.QTableWidgetItem(c['detail']))
 
         def on_nav_changed(row: int) -> None:
+            nonlocal _chat_poll_timer
             if 0 <= row < content_stack.count():
                 content_stack.setCurrentIndex(row)
                 header.setText(nav_titles[row])
                 header_sub.setText(nav_subtitles[row])
                 back_btn.setVisible(row != 0)
-                # Auto-load tickets when entering the Tickets tab
                 if nav_titles[row] == 'Tickets':
                     load_tickets()
+                if nav_titles[row] == 'Chat':
+                    _load_chat_tickets()
+                    _on_chat_ticket_selected(chat_ticket_combo.currentIndex())
+                    if _chat_poll_timer is None:
+                        _chat_poll_timer = QtCore.QTimer(dlg)
+                        _chat_poll_timer.setInterval(5000)
+                        _chat_poll_timer.timeout.connect(_load_chat_messages)
+                    _chat_poll_timer.start()
+                else:
+                    if _chat_poll_timer is not None:
+                        _chat_poll_timer.stop()
 
         def load_tickets() -> None:
             try:
