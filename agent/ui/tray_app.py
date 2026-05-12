@@ -37,6 +37,9 @@ class AgentTrayApp:
         self._thread: threading.Thread | None = None
         self._app: QtWidgets.QApplication | None = None
         self._tray: QtWidgets.QSystemTrayIcon | None = None
+        self._chat_seen_counts: dict[str, int] = {}
+        self._unread_ticket_ids: set[str] = set()
+        self._badge_timer: QtCore.QTimer | None = None
         self._running = False
 
     def start(self) -> None:
@@ -80,6 +83,7 @@ class AgentTrayApp:
         self._tray.setContextMenu(menu)
         self._tray.activated.connect(self._on_tray_activated)
         self._tray.show()
+        self._start_badge_polling()
         self._tray.showMessage(
             'Bosowa Portal Agent aktif',
             'Agent berjalan di background. Klik kanan icon untuk menu.',
@@ -114,6 +118,71 @@ class AgentTrayApp:
         painter.drawText(pix.rect(), QtCore.Qt.AlignCenter, 'B')
         painter.end()
         return QtGui.QIcon(pix)
+
+    def _make_alert_icon(self) -> QtGui.QIcon:
+        base = self._make_icon()
+        pix = base.pixmap(64, 64)
+        painter = QtGui.QPainter(pix)
+        painter.setRenderHints(QtGui.QPainter.Antialiasing)
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(QtGui.QColor('#EF4444'))
+        painter.drawEllipse(42, 2, 20, 20)
+        painter.setPen(QtGui.QColor('#FFFFFF'))
+        font = QtGui.QFont('Segoe UI', 11, QtGui.QFont.Bold)
+        painter.setFont(font)
+        painter.drawText(QtCore.QRect(42, 2, 20, 20), QtCore.Qt.AlignCenter, '!')
+        painter.end()
+        return QtGui.QIcon(pix)
+
+    def _update_tray_icon(self) -> None:
+        if self._tray is None:
+            return
+        if self._unread_ticket_ids:
+            self._tray.setIcon(self._make_alert_icon())
+            self._tray.setToolTip(f'Bosowa Portal Agent — {len(self._unread_ticket_ids)} pesan baru')
+        else:
+            self._tray.setIcon(self._make_icon())
+            self._tray.setToolTip('Bosowa Portal Agent')
+
+    def notify_chat_viewed(self, ticket_id: str, message_count: int) -> None:
+        self._chat_seen_counts[ticket_id] = message_count
+        self._unread_ticket_ids.discard(ticket_id)
+        self._update_tray_icon()
+
+    def _start_badge_polling(self) -> None:
+        import threading
+        from agent.api.tickets import list_my_tickets, get_messages
+
+        def _check() -> None:
+            def _bg() -> None:
+                try:
+                    tickets = list_my_tickets()
+                    new_unread: set[str] = set(self._unread_ticket_ids)
+                    for t in tickets:
+                        if not t.get('chatStarted'):
+                            continue
+                        tid = t['id']
+                        msgs = get_messages(tid)
+                        count = len(msgs)
+                        if tid not in self._chat_seen_counts:
+                            self._chat_seen_counts[tid] = count
+                        elif count > self._chat_seen_counts[tid]:
+                            new_unread.add(tid)
+                    QtCore.QTimer.singleShot(0, lambda u=frozenset(new_unread): _apply(u))
+                except Exception:
+                    pass
+
+            def _apply(unread: frozenset) -> None:
+                self._unread_ticket_ids = set(unread)
+                self._update_tray_icon()
+
+            threading.Thread(target=_bg, daemon=True).start()
+
+        self._badge_timer = QtCore.QTimer()
+        self._badge_timer.setInterval(30000)
+        self._badge_timer.timeout.connect(_check)
+        self._badge_timer.start()
+        _check()
 
     @staticmethod
     def _resolve_asset_path(relative_path: str) -> str | None:
