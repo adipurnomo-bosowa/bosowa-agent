@@ -85,3 +85,41 @@ def update_ticket_note(ticket_id: str, user_note: str) -> bool:
         verify=certifi.where(),
     )
     return resp.ok
+
+
+def start_chat(ticket_id: str) -> bool:
+    """Activate chat on a ticket (sets chatStarted=True)."""
+    resp = requests.post(
+        f'{config.API_BASE}/tickets/{ticket_id}/chat/start',
+        headers=_headers(),
+        timeout=config.HTTP_TIMEOUT,
+        verify=certifi.where(),
+    )
+    return resp.ok
+
+
+def get_messages(ticket_id: str) -> list[dict]:
+    """Fetch all chat messages for a ticket, oldest first."""
+    resp = requests.get(
+        f'{config.API_BASE}/tickets/{ticket_id}/messages',
+        headers=_headers(),
+        timeout=config.HTTP_TIMEOUT,
+        verify=certifi.where(),
+    )
+    if not resp.ok:
+        return []
+    return resp.json().get('messages', [])
+
+
+def send_message(ticket_id: str, content: str) -> dict | None:
+    """Send a chat message on a ticket. Returns the created message dict or None on failure."""
+    resp = requests.post(
+        f'{config.API_BASE}/tickets/{ticket_id}/messages',
+        headers=_headers(),
+        json={'content': content.strip()},
+        timeout=config.HTTP_TIMEOUT,
+        verify=certifi.where(),
+    )
+    if not resp.ok:
+        return None
+    return resp.json().get('message')
