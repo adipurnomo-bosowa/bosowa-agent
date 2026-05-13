@@ -652,35 +652,131 @@ class AgentTrayApp:
         dlg = QtWidgets.QDialog()
         dlg.setWindowTitle('Buat Tiket IT')
         dlg.setWindowIcon(self._make_icon())
-        dlg.setMinimumWidth(460)
+        dlg.setMinimumWidth(480)
+        dlg.setStyleSheet('''
+            QDialog { background: #0B1220; color: #E2E8F0; }
+            QWidget { background: #0B1220; color: #E2E8F0; }
+            QLabel { color: #94A3B8; font-size: 11px; font-weight: 600; background: transparent; }
+            QLabel#title_label { color: #E2E8F0; font-size: 16px; font-weight: 700; }
+            QLabel#sub_label { color: #64748B; font-size: 11px; }
+            QLabel#mac_label { color: #475569; font-size: 10px; font-family: monospace; }
+            QLineEdit {
+                background: #131E30; color: #E2E8F0;
+                border: 1px solid #1E3A52; border-radius: 8px;
+                padding: 10px 14px; font-size: 13px;
+            }
+            QLineEdit:focus { border: 1px solid #3B82F6; }
+            QLineEdit::placeholder { color: #475569; }
+            QComboBox {
+                background: #131E30; color: #E2E8F0;
+                border: 1px solid #1E3A52; border-radius: 8px;
+                padding: 10px 14px; font-size: 13px;
+            }
+            QComboBox:focus { border: 1px solid #3B82F6; }
+            QComboBox::drop-down { border: none; width: 24px; }
+            QComboBox QAbstractItemView {
+                background: #131E30; color: #E2E8F0;
+                selection-background-color: #1D4ED8;
+                border: 1px solid #1E3A52;
+            }
+            QTextEdit {
+                background: #131E30; color: #E2E8F0;
+                border: 1px solid #1E3A52; border-radius: 8px;
+                padding: 10px 14px; font-size: 13px;
+            }
+            QTextEdit:focus { border: 1px solid #3B82F6; }
+            QPushButton {
+                background: #2563EB; color: white;
+                border: none; border-radius: 8px;
+                padding: 11px 24px; font-size: 13px; font-weight: 700;
+            }
+            QPushButton:hover { background: #1D4ED8; }
+            QPushButton:disabled { background: #1e3a6e; color: #475569; }
+            QPushButton#cancel_btn {
+                background: #1E2D40; color: #94A3B8;
+                border: 1px solid #1E3A52;
+            }
+            QPushButton#cancel_btn:hover { background: #253550; }
+        ''')
+
         layout = QtWidgets.QVBoxLayout(dlg)
+        layout.setSpacing(0)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Header
+        header_w = QtWidgets.QWidget()
+        header_w.setStyleSheet('background: #111927; border-bottom: 1px solid #1E3A52;')
+        header_lay = QtWidgets.QVBoxLayout(header_w)
+        header_lay.setContentsMargins(24, 20, 24, 18)
+        header_lay.setSpacing(4)
+        h_title = QtWidgets.QLabel('Buat Tiket IT')
+        h_title.setObjectName('title_label')
+        h_title.setStyleSheet('color: #E2E8F0; font-size: 16px; font-weight: 700; background: transparent;')
+        h_sub = QtWidgets.QLabel('Laporkan masalah teknis kepada tim IT Bosowa')
+        h_sub.setStyleSheet('color: #64748B; font-size: 11px; background: transparent;')
+        header_lay.addWidget(h_title)
+        header_lay.addWidget(h_sub)
+        layout.addWidget(header_w)
+
+        # Form body
+        body_w = QtWidgets.QWidget()
+        body_lay = QtWidgets.QVBoxLayout(body_w)
+        body_lay.setContentsMargins(24, 20, 24, 20)
+        body_lay.setSpacing(14)
+
+        def _field(label_text: str, widget: QtWidgets.QWidget) -> QtWidgets.QWidget:
+            w = QtWidgets.QWidget()
+            w.setStyleSheet('background: transparent;')
+            v = QtWidgets.QVBoxLayout(w)
+            v.setContentsMargins(0, 0, 0, 0)
+            v.setSpacing(5)
+            lbl = QtWidgets.QLabel(label_text.upper())
+            lbl.setStyleSheet('color: #64748B; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; background: transparent;')
+            v.addWidget(lbl)
+            v.addWidget(widget)
+            return w
 
         title_edit = QtWidgets.QLineEdit()
-        title_edit.setPlaceholderText('Judul masalah')
+        title_edit.setPlaceholderText('Contoh: Laptop tidak bisa terhubung WiFi')
+        body_lay.addWidget(_field('Judul Masalah', title_edit))
+
+        row_w = QtWidgets.QWidget()
+        row_w.setStyleSheet('background: transparent;')
+        row_lay = QtWidgets.QHBoxLayout(row_w)
+        row_lay.setContentsMargins(0, 0, 0, 0)
+        row_lay.setSpacing(12)
         category_box = QtWidgets.QComboBox()
         category_box.addItems(TICKET_CATEGORIES)
         priority_box = QtWidgets.QComboBox()
         priority_box.addItems(TICKET_PRIORITIES)
+        row_lay.addWidget(_field('Kategori', category_box))
+        row_lay.addWidget(_field('Prioritas', priority_box))
+        body_lay.addWidget(row_w)
+
         desc_edit = QtWidgets.QTextEdit()
-        desc_edit.setPlaceholderText('Jelaskan detail masalah...')
-        desc_edit.setMinimumHeight(120)
+        desc_edit.setPlaceholderText('Jelaskan detail masalah, langkah yang sudah dicoba, dan dampaknya...')
+        desc_edit.setMinimumHeight(110)
+        body_lay.addWidget(_field('Deskripsi', desc_edit))
+
         mac_label = QtWidgets.QLabel(f'Device: {get_mac_address()}')
+        mac_label.setStyleSheet('color: #334155; font-size: 10px; font-family: monospace; background: transparent;')
+        body_lay.addWidget(mac_label)
 
-        form = QtWidgets.QFormLayout()
-        form.addRow('Judul', title_edit)
-        form.addRow('Kategori', category_box)
-        form.addRow('Prioritas', priority_box)
-        form.addRow('Deskripsi', desc_edit)
-        form.addRow('', mac_label)
-        layout.addLayout(form)
+        layout.addWidget(body_w)
 
-        btn_row = QtWidgets.QHBoxLayout()
-        btn_row.addStretch(1)
-        submit_btn = QtWidgets.QPushButton('Kirim Tiket')
+        # Footer buttons
+        footer_w = QtWidgets.QWidget()
+        footer_w.setStyleSheet('background: #0B1220; border-top: 1px solid #1E3A52;')
+        footer_lay = QtWidgets.QHBoxLayout(footer_w)
+        footer_lay.setContentsMargins(24, 14, 24, 14)
+        footer_lay.setSpacing(10)
+        footer_lay.addStretch(1)
         cancel_btn = QtWidgets.QPushButton('Batal')
-        btn_row.addWidget(cancel_btn)
-        btn_row.addWidget(submit_btn)
-        layout.addLayout(btn_row)
+        cancel_btn.setObjectName('cancel_btn')
+        submit_btn = QtWidgets.QPushButton('Kirim Tiket  →')
+        footer_lay.addWidget(cancel_btn)
+        footer_lay.addWidget(submit_btn)
+        layout.addWidget(footer_w)
 
         cancel_btn.clicked.connect(dlg.reject)
 
@@ -788,7 +884,17 @@ class AgentTrayApp:
         dlg.setWindowIcon(self._make_icon())
         dlg.setMinimumSize(500, 580)
         dlg.resize(540, 640)
-        dlg.setStyleSheet('background: #0F1729; color: #E2E8F0;')
+        dlg.setStyleSheet(
+            'QDialog { background: #0B1220; color: #E2E8F0; }'
+            'QWidget { background: #0B1220; color: #E2E8F0; }'
+            'QPlainTextEdit { background: #1A2535; color: #E2E8F0; border: 1px solid #334155;'
+            ' border-radius: 8px; padding: 4px 8px; font-size: 12px; }'
+            'QPlainTextEdit:focus { border: 1px solid #3B82F6; }'
+            'QPushButton { background: #2563EB; color: white; border: none;'
+            ' border-radius: 6px; padding: 8px 16px; font-size: 12px; font-weight: 600; }'
+            'QPushButton:hover { background: #1D4ED8; }'
+            'QPushButton:disabled { background: #1e3a6e; color: #64748B; }'
+        )
 
         outer = QtWidgets.QVBoxLayout(dlg)
         outer.setSpacing(0)
@@ -834,14 +940,15 @@ class AgentTrayApp:
         bubble_scroll = QtWidgets.QScrollArea()
         bubble_scroll.setWidgetResizable(True)
         bubble_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        bubble_scroll.setStyleSheet('background: #0F1729; border: none;')
+        bubble_scroll.setStyleSheet('QScrollArea { background: #0D1526; border: none; }')
         bubble_container = QtWidgets.QWidget()
-        bubble_container.setStyleSheet('background: #0F1729;')
+        bubble_container.setStyleSheet('background: #0D1526;')
         bubble_vbox = QtWidgets.QVBoxLayout(bubble_container)
-        bubble_vbox.setContentsMargins(12, 12, 12, 12)
-        bubble_vbox.setSpacing(8)
+        bubble_vbox.setContentsMargins(14, 14, 14, 14)
+        bubble_vbox.setSpacing(10)
         bubble_vbox.addStretch(1)
         bubble_scroll.setWidget(bubble_container)
+        bubble_scroll.viewport().setStyleSheet('background: #0D1526;')
         outer.addWidget(bubble_scroll, 1)
 
         # ── Mulai Chat button (only when chatStarted=False) ───────
@@ -883,6 +990,7 @@ class AgentTrayApp:
         # ── State ─────────────────────────────────────────────────
         _t = [dict(ticket)]
         _msg_count = [0]
+        _seen_ids: set = set()   # dedup by message ID
 
         def _make_bubble(msg: dict) -> QtWidgets.QWidget:
             is_admin = msg.get('senderType') == 'admin'
@@ -896,40 +1004,34 @@ class AgentTrayApp:
             h = QtWidgets.QHBoxLayout(container)
             h.setContentsMargins(0, 0, 0, 0)
             bubble = QtWidgets.QWidget()
-            bubble.setMaximumWidth(380)
+            bubble.setMaximumWidth(390)
             b = QtWidgets.QVBoxLayout(bubble)
-            b.setContentsMargins(10, 7, 10, 7)
-            b.setSpacing(3)
-            sender_lbl = QtWidgets.QLabel(f"{msg.get('senderName', '?')} · {time_str}")
+            b.setContentsMargins(12, 8, 12, 8)
+            b.setSpacing(4)
+            sender_lbl = QtWidgets.QLabel(f"{msg.get('senderName', '?')}  ·  {time_str}")
             sender_lbl.setStyleSheet(
-                ('color: #67E8F9;' if is_admin else 'color: #86EFAC;') +
-                ' font-size: 10px; font-weight: 700;'
+                ('color: #38BDF8;' if is_admin else 'color: #4ADE80;') +
+                ' font-size: 10px; font-weight: 700; background: transparent;'
             )
             b.addWidget(sender_lbl)
             msg_lbl = QtWidgets.QLabel(msg.get('content', ''))
             msg_lbl.setWordWrap(True)
             msg_lbl.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-            msg_lbl.setStyleSheet('color: #CBD5E1; font-size: 12px;')
+            msg_lbl.setStyleSheet('color: #F1F5F9; font-size: 13px; background: transparent;')
             b.addWidget(msg_lbl)
             if is_admin:
                 bubble.setStyleSheet(
-                    'background: rgba(6,182,212,0.12); border: 1px solid rgba(6,182,212,0.25); border-radius: 10px;'
+                    'background: #1B3A52; border: 1px solid #2E6A8F; border-radius: 12px;'
                 )
                 h.addWidget(bubble)
                 h.addStretch()
             else:
                 bubble.setStyleSheet(
-                    'background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.25); border-radius: 10px;'
+                    'background: #1A3828; border: 1px solid #2D6A45; border-radius: 12px;'
                 )
                 h.addStretch()
                 h.addWidget(bubble)
             return container
-
-        def _clear_bubbles() -> None:
-            while bubble_vbox.count() > 1:
-                item = bubble_vbox.takeAt(0)
-                if item and item.widget():
-                    item.widget().deleteLater()
 
         def _scroll_bottom() -> None:
             QtCore.QTimer.singleShot(50, lambda: bubble_scroll.verticalScrollBar().setValue(
@@ -947,10 +1049,11 @@ class AgentTrayApp:
             chat_input.setEnabled(True)
             send_btn.setEnabled(True)
             msgs = get_messages(t['id'])
-            if len(msgs) != _msg_count[0]:
-                _clear_bubbles()
-                for m in msgs:
-                    bubble_vbox.insertWidget(bubble_vbox.count() - 1, _make_bubble(m))
+            new_msgs = [m for m in msgs if m.get('id') not in _seen_ids]
+            for m in new_msgs:
+                _seen_ids.add(m.get('id', ''))
+                bubble_vbox.insertWidget(bubble_vbox.count() - 1, _make_bubble(m))
+            if new_msgs:
                 _msg_count[0] = len(msgs)
                 _scroll_bottom()
 
@@ -975,6 +1078,9 @@ class AgentTrayApp:
             try:
                 msg = send_message(_t[0]['id'], content)
                 if msg:
+                    mid = msg.get('id', '')
+                    if mid:
+                        _seen_ids.add(mid)
                     bubble_vbox.insertWidget(bubble_vbox.count() - 1, _make_bubble(msg))
                     _msg_count[0] += 1
                     chat_input.clear()
