@@ -1,0 +1,50 @@
+category,name
+Productivity & Office,Microsoft 365
+Productivity & Office,Microsoft Outlook
+Productivity & Office,OneDrive
+Productivity & Office,Adobe Acrobat Reader
+Productivity & Office,WPS Office
+Productivity & Office,Nitro PDF
+Browser & Internet,Google Chrome
+Browser & Internet,Mozilla Firefox
+Browser & Internet,Microsoft Edge
+Communication & Meeting,Zoom
+Communication & Meeting,WhatsApp Desktop
+Communication & Meeting,Telegram Desktop
+Communication & Meeting,Microsoft Teams
+Remote Support & IT Tools,AnyDesk
+Remote Support & IT Tools,TeamViewer
+Remote Support & IT Tools,PuTTY
+Remote Support & IT Tools,WinSCP
+Remote Support & IT Tools,Winbox
+Remote Support & IT Tools,Solarwinds
+Remote Support & IT Tools,sVMS2000
+Remote Support & IT Tools,Attendance Management
+Remote Support & IT Tools,iVMS-4200
+Remote Support & IT Tools,Ultraviewer
+Security & Antivirus,Microsoft Defender
+Security & Antivirus,Kaspersky Endpoint Security
+Security & Antivirus,Bitdefender GravityZone
+Security & Antivirus,Malwarebytes
+Compression & Utility,WinRAR
+Compression & Utility,7-Zip
+Compression & Utility,Notepad++
+Compression & Utility,VLC Media Player
+Compression & Utility,Java Runtime Environment
+Compression & Utility,.NET Runtime
+Design & Multimedia,Adobe Photoshop
+Design & Multimedia,Adobe Illustrator
+Design & Multimedia,CorelDRAW
+Design & Multimedia,Canva Desktop
+Design & Multimedia,Capcut
+Design & Multimedia,OBS Studio
+Developer & Database Tools,Visual Studio Code
+Developer & Database Tools,Visual Studio
+Developer & Database Tools,Git
+Developer & Database Tools,Docker Desktop
+Developer & Database Tools,MySQL Workbench
+Developer & Database Tools,DBeaver
+ERP / Business Application,SAP GUI
+ERP / Business Application,Oracle NetSuite
+ERP / Business Application,Odoo
+ERP / Business Application,Accurate
