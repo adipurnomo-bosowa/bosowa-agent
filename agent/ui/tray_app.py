@@ -601,10 +601,9 @@ class AgentTrayApp:
         dashboard_layout.addLayout(metrics_row)
 
         # === QUICK HEALTH STATUS BAR ===
-        health_summary_label = QtWidgets.QLabel('Memuat status kesehatan...')
-        health_summary_label.setStyleSheet('color: #94A3B8; font-size: 11px; padding: 6px 0;')
-        self.dashboard_health_label = health_summary_label
-        dashboard_layout.addWidget(health_summary_label)
+        self.dashboard_health_label = QtWidgets.QLabel('Memuat status kesehatan...')
+        self.dashboard_health_label.setStyleSheet('color: #94A3B8; font-size: 11px; padding: 6px 0;')
+        dashboard_layout.addWidget(self.dashboard_health_label)
 
         dashboard_layout.addStretch()
 
@@ -797,6 +796,8 @@ class AgentTrayApp:
                 status_lbl.setText('AKTIF')
                 status_lbl.setStyleSheet('color: #60A5FA; font-size: 11px; font-weight: 600;')
                 return
+            if thresholds is None:
+                return
             warn_thresh, err_thresh = thresholds
             if pct >= err_thresh:
                 color, text = '#EF4444', 'KRITIS'
@@ -809,8 +810,6 @@ class AgentTrayApp:
 
         def refresh_summary() -> None:
             data = self._collect_device_summary()
-            for key, lbl in summary_labels.items():
-                lbl.setText(data.get(key, '-'))
             refresh_hw()
 
             # Update metric cards from device summary
