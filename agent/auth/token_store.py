@@ -152,15 +152,11 @@ def _write_token_file(data: dict) -> None:
 # ---- Refresh token ---------------------------------------------------------
 
 def store_refresh_token(refresh_token: str) -> None:
-    """Write refresh_token to encrypted local file."""
-    try:
-        blob = _fernet_encrypt({'refresh_token': refresh_token})
-        config.TOKEN_FILE.write_bytes(blob)
-        # Restrict file permissions (Windows: read for Administrators + SYSTEM only)
-        _restrict_file(config.TOKEN_FILE)
-        logger.debug('Stored refresh_token in encrypted file')
-    except Exception as e:
-        logger.error('Failed to store refresh_token: %s', e)
+    """Store refresh token encrypted alongside any existing session data."""
+    data = _read_token_file()
+    data['refresh_token'] = refresh_token
+    _write_token_file(data)
+    logger.debug('Stored refresh_token in token file')
 
 
 def get_refresh_token() -> str | None:
@@ -203,7 +199,9 @@ def get_user_session() -> dict | None:
 def clear_user_session() -> None:
     """Remove user session from token file, keep other data intact."""
     data = _read_token_file()
-    data.pop('user', None)
+    if 'user' not in data:
+        return
+    data.pop('user')
     _write_token_file(data)
 
 
@@ -252,12 +250,10 @@ def clear_pin_hash() -> None:
 # ---- Session code (ephemeral) -----------------------------------------------
 
 def store_session_code(code: str) -> None:
-    """Write one-time session code for web login."""
-    try:
-        blob = _fernet_encrypt({'session_code': code})
-        config.TOKEN_FILE.write_bytes(blob)
-    except Exception as e:
-        logger.error('Failed to store session_code: %s', e)
+    """Store session code encrypted alongside any existing session data."""
+    data = _read_token_file()
+    data['session_code'] = code
+    _write_token_file(data)
 
 
 def get_session_code() -> str | None:
