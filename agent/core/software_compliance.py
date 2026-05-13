@@ -108,7 +108,7 @@ def check_compliance(whitelist: list[str] | None = None) -> ComplianceResult:
     unmatched: list[str] = []
     for prog in installed:
         prog_lower = prog.lower()
-        hit = any(w in prog_lower or prog_lower in w for w in whitelist)
+        hit = any(w.lower() in prog_lower or prog_lower in w.lower() for w in whitelist)
         (matched if hit else unmatched).append(prog)
 
     total = len(installed)

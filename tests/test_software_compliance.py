@@ -39,7 +39,7 @@ def test_check_compliance_all_matched():
     assert len(result.unmatched) == 0
 
 
-def test_check_compliance_warn_threshold():
+def test_check_compliance_error_threshold():
     from agent.core.software_compliance import check_compliance
     whitelist = ['microsoft edge']
     # 1 matched out of 10 = 10% -> ERROR
@@ -49,6 +49,26 @@ def test_check_compliance_warn_threshold():
     assert result.status == 'ERROR'
     assert result.score == pytest.approx(10.0)
     assert len(result.unmatched) == 9
+
+
+def test_check_compliance_warn_threshold():
+    from agent.core.software_compliance import check_compliance
+    whitelist = ['app a', 'app b', 'app c', 'app d', 'app e',
+                 'app f', 'app g']
+    # 7 out of 10 = 70% -> WARN
+    installed = [f'App {c.upper()}' for c in 'abcdefg'] + [f'Unknown {i}' for i in range(3)]
+    with patch('agent.core.software_compliance.get_installed_programs', return_value=installed):
+        result = check_compliance(whitelist=whitelist)
+    assert result.status == 'WARN'
+    assert 60 <= result.score <= 80
+
+
+def test_get_installed_programs_non_windows():
+    import sys
+    from agent.core.software_compliance import get_installed_programs
+    with patch.object(sys, 'platform', 'linux'):
+        result = get_installed_programs()
+    assert result == []
 
 
 def test_check_compliance_empty_installed():
