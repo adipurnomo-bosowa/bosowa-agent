@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time as _time
 from datetime import datetime, timezone
 
 import psutil
@@ -9,6 +10,7 @@ import psutil
 from agent import config
 from agent.core.geo import fetch_ip_location, get_cached_location
 from agent.core.socket_client import AgentSocketClient
+from agent.core.software_compliance import get_installed_programs
 from agent.utils.logger import logger
 
 
@@ -16,9 +18,16 @@ async def heartbeat_loop(socket_client: AgentSocketClient, token: str) -> None:
     """Periodically emit heartbeat events via Socket.IO."""
     static_ctx = _get_static_context()
     last_geo_refresh = 0.0
+    _SW_REFRESH_INTERVAL = 600  # 10 minutes
+    cached_sw_list: list[str] = []
+    last_sw_refresh: float = 0.0
     while True:
         try:
             now_ts = datetime.now(timezone.utc).timestamp()
+            now_mono = _time.monotonic()
+            if now_mono - last_sw_refresh >= _SW_REFRESH_INTERVAL:
+                cached_sw_list = await asyncio.to_thread(get_installed_programs)
+                last_sw_refresh = now_mono
             vm = psutil.virtual_memory()
             payload = {
                 'token': token,
@@ -31,6 +40,7 @@ async def heartbeat_loop(socket_client: AgentSocketClient, token: str) -> None:
                 'disk_percent': _get_primary_disk_usage(),
                 'ip_address': static_ctx['ip_address'],
             }
+            payload['softwareList'] = cached_sw_list[:200]  # cap at 200 entries
             # Refresh IP geolocation at most every 10 minutes; otherwise reuse cache
             location = get_cached_location()
             if location is None or (now_ts - last_geo_refresh) >= 600:
