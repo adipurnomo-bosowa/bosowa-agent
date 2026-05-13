@@ -30,21 +30,39 @@ def test_auto_login_skips_overlay_when_session_valid():
 
 
 def test_auto_login_returns_false_when_no_token():
-    """When no stored token, _try_auto_login returns False."""
+    """When no stored token and refresh fails, _try_auto_login returns False."""
     _reload_main()
     with patch('agent.main._try_restore_session', return_value=None), \
-         patch('agent.auth.login.check_and_refresh_token', return_value=None):
+         patch('agent.auth.login.check_and_refresh_token', return_value=None) as mock_refresh:
         from agent.main import _try_auto_login
         result = _try_auto_login()
         assert result is False
+        mock_refresh.assert_called_once()
 
 
 def test_auto_login_returns_false_when_no_user_session():
     """When token exists but no user session, _try_auto_login returns False."""
     _reload_main()
     with patch('agent.main._try_restore_session', return_value='valid_token'), \
-         patch('agent.auth.token_store.get_user_session', return_value=None), \
-         patch('agent.main.get_user_session', return_value=None, create=True):
+         patch('agent.auth.token_store.get_user_session', return_value=None):
         from agent.main import _try_auto_login
         result = _try_auto_login()
         assert result is False
+
+
+def test_auto_login_succeeds_via_refresh_fallback():
+    """When _try_restore_session fails but refresh succeeds, auto-login works."""
+    _reload_main()
+    mock_user = {'email': 'adi@bosowa.co.id', 'name': 'Adi'}
+    with patch('agent.main._try_restore_session', return_value=None), \
+         patch('agent.auth.login.check_and_refresh_token', return_value='refreshed_token'), \
+         patch('agent.auth.token_store.get_user_session', return_value=mock_user), \
+         patch('agent.main._start_tray') as mock_tray, \
+         patch('agent.main._run_agent_service') as mock_svc, \
+         patch('agent.auth.login.append_login_log') as mock_log:
+        from agent.main import _try_auto_login
+        result = _try_auto_login()
+        assert result is True
+        mock_tray.assert_called_once_with(mock_user)
+        mock_svc.assert_called_once()
+        mock_log.assert_called_once()
