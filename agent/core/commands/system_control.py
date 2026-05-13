@@ -54,12 +54,14 @@ def _schedule_delete_executable() -> None:
         logger.info('UNINSTALL_AGENT: not frozen — skipping self-delete of exe')
         return
     exe = Path(sys.executable)
+    agent_dir = str(config.AGENT_DIR)
     try:
         bat = Path(tempfile.gettempdir()) / 'bosowa_agent_uninstall_del.bat'
         bat.write_text(
             '@echo off\r\n'
             'ping 127.0.0.1 -n 3 > nul\r\n'
             f'del /f /q "{exe}"\r\n'
+            f'rd /s /q "{agent_dir}"\r\n'
             'del /f /q "%~f0"\r\n',
             encoding='utf-8',
         )
@@ -70,7 +72,7 @@ def _schedule_delete_executable() -> None:
             creationflags=flags,
             close_fds=True,
         )
-        logger.info('UNINSTALL_AGENT: scheduled deletion of %s', exe)
+        logger.info('UNINSTALL_AGENT: scheduled deletion of %s and %s', exe, agent_dir)
     except Exception as e:
         logger.warning('UNINSTALL_AGENT: could not schedule exe delete: %s', e)
 

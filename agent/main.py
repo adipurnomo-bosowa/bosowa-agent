@@ -99,7 +99,7 @@ def main() -> None:
 
 def _try_auto_login() -> bool:
     """Return True if session restore succeeded (skips lock screen overlay)."""
-    from agent.auth.token_store import get_user_session
+    from agent.auth.token_store import get_user_session, get_refresh_token
     from agent.auth.login import append_login_log
 
     token = _try_restore_session()
@@ -118,10 +118,11 @@ def _try_auto_login() -> bool:
     if not user:
         return False
 
+    refresh = get_refresh_token()
     logger.info('Auto-login: restored session for user=%s', user.get('email', '?'))
     append_login_log(user.get('email', ''), user.get('name', ''), 'AUTO', 'restore', 'OK')
     _start_tray(user)
-    _run_agent_service(AuthTokens(token=token, refresh_token=None, user=user))
+    _run_agent_service(AuthTokens(token=token, refresh_token=refresh, user=user))
     return True
 
 
@@ -180,6 +181,24 @@ def _run_auth_flow() -> None:
         store_device_token(token)
         if refresh:
             store_refresh_token(refresh)
+    elif token == '_pin_auth_':
+        from agent.auth.token_store import get_device_token as _get_stored_device_token
+
+        stored = _get_stored_device_token()
+        if not stored:
+            from PyQt5 import QtWidgets as _QW
+
+            _app = _QW.QApplication.instance() or _QW.QApplication([])
+            _QW.QMessageBox.critical(
+                None,
+                'Login Web Diperlukan',
+                'PIN berhasil, tapi token perangkat belum tersimpan.\n\n'
+                'Lakukan login web sekali terlebih dahulu,\n'
+                'kemudian PIN bisa digunakan untuk login berikutnya.',
+            )
+            overlay.wait_until_closed()
+            return _run_auth_flow()
+        token = stored
 
     # Close overlay and continue
     overlay.wait_until_closed()

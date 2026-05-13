@@ -193,7 +193,8 @@ def store_user_session(user: dict) -> None:
 def get_user_session() -> dict | None:
     """Return stored user dict, or None if not present."""
     data = _read_token_file()
-    return data.get('user')
+    user = data.get('user')
+    return user if isinstance(user, dict) and user else None
 
 
 def clear_user_session() -> None:

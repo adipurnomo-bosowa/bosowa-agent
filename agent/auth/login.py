@@ -274,6 +274,6 @@ def append_login_log(email: str, name: str, event: str, method: str, result: str
 
 def logout(email: str = '', name: str = '') -> None:
     """Wipe all stored credentials."""
+    append_login_log(email, name, 'LOGOUT', 'manual', 'OK')
     clear_all_credentials()
     logger.info('Agent logged out, credentials cleared')
-    append_login_log(email, name, 'LOGOUT', 'manual', 'OK')
