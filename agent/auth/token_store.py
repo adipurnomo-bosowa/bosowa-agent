@@ -125,6 +125,30 @@ def _fernet_decrypt(blob: bytes) -> dict:
     return json.loads(plaintext)
 
 
+# ---- Token file helpers ----------------------------------------------------
+
+def _read_token_file() -> dict:
+    """Decrypt and return the token file as a dict, or {} on missing/failure."""
+    if not config.TOKEN_FILE.exists():
+        return {}
+    try:
+        blob = config.TOKEN_FILE.read_bytes()
+        return _fernet_decrypt(blob)
+    except Exception as e:
+        logger.error('Failed to read token file: %s', e)
+        return {}
+
+
+def _write_token_file(data: dict) -> None:
+    """Encrypt and write dict to TOKEN_FILE, then restrict permissions."""
+    try:
+        blob = _fernet_encrypt(data)
+        config.TOKEN_FILE.write_bytes(blob)
+        _restrict_file(config.TOKEN_FILE)
+    except Exception as e:
+        logger.error('Failed to write token file: %s', e)
+
+
 # ---- Refresh token ---------------------------------------------------------
 
 def store_refresh_token(refresh_token: str) -> None:
@@ -159,6 +183,28 @@ def clear_refresh_token() -> None:
             config.TOKEN_FILE.unlink()
     except Exception as e:
         logger.warning('Failed to remove token file: %s', e)
+
+
+# ---- User session ----------------------------------------------------------
+
+def store_user_session(user: dict) -> None:
+    """Persist user dict alongside refresh token (encrypted)."""
+    data = _read_token_file()
+    data['user'] = user
+    _write_token_file(data)
+
+
+def get_user_session() -> dict | None:
+    """Return stored user dict, or None if not present."""
+    data = _read_token_file()
+    return data.get('user')
+
+
+def clear_user_session() -> None:
+    """Remove user session from token file, keep other data intact."""
+    data = _read_token_file()
+    data.pop('user', None)
+    _write_token_file(data)
 
 
 # ---- PIN hash --------------------------------------------------------------
@@ -236,6 +282,7 @@ def get_session_code() -> str | None:
 def clear_all_credentials() -> None:
     """Wipe keyring + encrypted files on logout."""
     clear_device_token()
+    clear_user_session()
     clear_refresh_token()
     clear_pin_hash()
     logger.info('All credentials cleared')
