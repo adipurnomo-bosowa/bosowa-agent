@@ -444,12 +444,10 @@ class AgentTrayApp:
         app_sub.setStyleSheet('color: #94A3B8; font-size: 11px;')
         sidebar_layout.addWidget(app_sub)
 
-        nav_titles = ['Dashboard', 'Device', 'User', 'Health Check', 'Tickets']
+        nav_titles = ['Dashboard', 'Device Health Check', 'Tickets']
         nav_subtitles = [
             'Ringkasan endpoint, user aktif, dan health check (auto refresh 5 detik)',
-            'Detail perangkat dan spesifikasi sistem',
-            'Profil pengguna yang sedang login',
-            'Pemeriksaan kesehatan sistem secara berkala',
+            'Detail perangkat, baterai, storage, dan pemeriksaan kesehatan sistem',
             'Daftar tiket IT yang Anda buat',
         ]
 
@@ -556,19 +554,18 @@ class AgentTrayApp:
         dashboard_layout.addWidget(health_group)
         content_stack.addWidget(dashboard_page)
 
-        device_page = QtWidgets.QWidget()
-        device_layout = QtWidgets.QVBoxLayout(device_page)
-        device_layout.setContentsMargins(0, 0, 0, 0)
-        device_layout.setSpacing(10)
-        device_card = QtWidgets.QGroupBox('Detail Device')
-        device_card_form = QtWidgets.QFormLayout(device_card)
-        device_labels: dict[str, QtWidgets.QLabel] = {}
-        for key in ['Hostname', 'OS', 'MAC', 'IP', 'CPU', 'RAM', 'Disk C:', 'Last update']:
-            lbl = QtWidgets.QLabel('-')
-            device_labels[key] = lbl
-            device_card_form.addRow(key, lbl)
-        device_layout.addWidget(device_card)
+        # ── Device Health Check page (index 1) ────────────────────
+        device_health_page = QtWidgets.QWidget()
+        device_health_scroll = QtWidgets.QScrollArea()
+        device_health_scroll.setWidgetResizable(True)
+        device_health_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        device_health_scroll.setStyleSheet('QScrollArea { background: transparent; border: none; }')
+        device_health_scroll.setWidget(device_health_page)
+        device_health_layout = QtWidgets.QVBoxLayout(device_health_page)
+        device_health_layout.setContentsMargins(0, 0, 0, 0)
+        device_health_layout.setSpacing(10)
 
+        # Top section: Battery & Storage
         hw_group = QtWidgets.QGroupBox('Baterai & Storage')
         hw_group_vbox = QtWidgets.QVBoxLayout(hw_group)
         hw_group_vbox.setSpacing(8)
@@ -579,33 +576,14 @@ class AgentTrayApp:
         hw_rows_layout.setContentsMargins(0, 0, 0, 0)
         hw_rows_layout.setSpacing(10)
         hw_group_vbox.addWidget(hw_rows_container)
-        device_layout.addWidget(hw_group)
+        device_health_layout.addWidget(hw_group)
 
-        device_layout.addStretch(1)
-        content_stack.addWidget(device_page)
+        # Bottom section: Health Check table
+        health_check_group = QtWidgets.QGroupBox('General Health Check')
+        health_check_vbox = QtWidgets.QVBoxLayout(health_check_group)
+        health_check_vbox.setSpacing(8)
+        health_check_vbox.setContentsMargins(10, 12, 10, 10)
 
-        user_page = QtWidgets.QWidget()
-        user_layout = QtWidgets.QVBoxLayout(user_page)
-        user_layout.setContentsMargins(0, 0, 0, 0)
-        user_layout.setSpacing(10)
-        user_card = QtWidgets.QGroupBox('Detail User')
-        user_card_form = QtWidgets.QFormLayout(user_card)
-        user_card_form.addRow('Nama', QtWidgets.QLabel(str(self.user.get('name') or '-')))
-        user_card_form.addRow('Email', QtWidgets.QLabel(str(self.user.get('email') or '-')))
-        user_card_form.addRow('Employee ID', QtWidgets.QLabel(str(self.user.get('employeeId') or '-')))
-        user_card_form.addRow('Business Unit', QtWidgets.QLabel(str(self.user.get('businessUnit') or '-')))
-        user_card_form.addRow('Role', QtWidgets.QLabel(str(self.user.get('role') or '-')))
-        user_layout.addWidget(user_card)
-        user_layout.addStretch(1)
-        content_stack.addWidget(user_page)
-
-        health_page = QtWidgets.QWidget()
-        health_layout_page = QtWidgets.QVBoxLayout(health_page)
-        health_layout_page.setContentsMargins(0, 0, 0, 0)
-        health_layout_page.setSpacing(10)
-        health_header = QtWidgets.QLabel('General Health Check')
-        health_header.setStyleSheet('color: #93C5FD;')
-        health_layout_page.addWidget(health_header)
         health_table = QtWidgets.QTableWidget()
         health_table.setColumnCount(3)
         health_table.setHorizontalHeaderLabels(['Check', 'Status', 'Detail'])
@@ -614,8 +592,37 @@ class AgentTrayApp:
         health_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
         health_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         health_table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
-        health_layout_page.addWidget(health_table)
-        content_stack.addWidget(health_page)
+        health_check_vbox.addWidget(health_table)
+
+        # Expandable unmatched programs list
+        expand_btn = QtWidgets.QPushButton('▶ Lihat program tidak dikenal (0)')
+        expand_btn.setFlat(True)
+        expand_btn.setStyleSheet('color: #94A3B8; font-size: 11px; text-align: left; padding: 4px 0;')
+        health_check_vbox.addWidget(expand_btn)
+
+        unmatched_widget = QtWidgets.QWidget()
+        unmatched_layout = QtWidgets.QVBoxLayout(unmatched_widget)
+        unmatched_layout.setContentsMargins(0, 0, 0, 0)
+        unmatched_layout.setSpacing(2)
+        unmatched_widget.setVisible(False)
+        health_check_vbox.addWidget(unmatched_widget)
+
+        self.expand_btn = expand_btn
+        self.unmatched_widget = unmatched_widget
+
+        def toggle_unmatched() -> None:
+            visible = unmatched_widget.isVisible()
+            unmatched_widget.setVisible(not visible)
+            if not visible:
+                expand_btn.setText(f'▼ Lihat program tidak dikenal ({unmatched_widget.layout().count()})')
+            else:
+                expand_btn.setText(f'▶ Lihat program tidak dikenal ({unmatched_widget.layout().count()})')
+
+        expand_btn.clicked.connect(toggle_unmatched)
+
+        device_health_layout.addWidget(health_check_group)
+        device_health_layout.addStretch(1)
+        content_stack.addWidget(device_health_scroll)
 
         tickets_page = QtWidgets.QWidget()
         tickets_layout = QtWidgets.QVBoxLayout(tickets_page)
@@ -729,8 +736,6 @@ class AgentTrayApp:
             data = self._collect_device_summary()
             for key, lbl in summary_labels.items():
                 lbl.setText(data.get(key, '-'))
-            for key, lbl in device_labels.items():
-                lbl.setText(data.get(key, '-'))
             refresh_hw()
 
             def _run_health_checks_bg() -> None:
@@ -751,6 +756,21 @@ class AgentTrayApp:
                             status_item.setForeground(QtGui.QColor('#EF4444'))
                         health_table.setItem(i, 1, status_item)
                         health_table.setItem(i, 2, QtWidgets.QTableWidgetItem(c['detail']))
+
+                    # Update unmatched programs list
+                    compliance = next((c for c in checks if c.get('name') == 'Software Compliance'), None)
+                    unmatched_list = compliance.get('unmatched', []) if compliance else []
+                    while self.unmatched_widget.layout().count():
+                        item = self.unmatched_widget.layout().takeAt(0)
+                        if item.widget():
+                            item.widget().deleteLater()
+                    for prog in unmatched_list:
+                        lbl = QtWidgets.QLabel(f'  • {prog}')
+                        lbl.setStyleSheet('color: #94A3B8; font-size: 11px;')
+                        self.unmatched_widget.layout().addWidget(lbl)
+                    count = len(unmatched_list)
+                    arrow = '▼' if self.unmatched_widget.isVisible() else '▶'
+                    self.expand_btn.setText(f'{arrow} Lihat program tidak dikenal ({count})')
 
                 QtCore.QTimer.singleShot(0, _update_health_ui)
 
