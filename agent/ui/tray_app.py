@@ -374,15 +374,21 @@ class AgentTrayApp:
     @staticmethod
     def _check_windows_password() -> dict:
         """Check if current Windows user account has a password set."""
-        import subprocess
-        import getpass
+        import subprocess, getpass
+        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
         try:
             username = getpass.getuser()
             result = subprocess.run(
                 ['powershell', '-NoProfile', '-NonInteractive', '-Command',
-                 f'(Get-LocalUser -Name "{username}").PasswordRequired'],
-                capture_output=True, text=True, timeout=5
+                 f"(Get-LocalUser -Name '{username}').PasswordRequired"],
+                capture_output=True, text=True, timeout=5,
+                creationflags=flags,
             )
+            stderr = result.stderr.strip().lower()
+            if 'not found' in stderr or 'tidak ditemukan' in stderr:
+                # Domain account — Get-LocalUser doesn't apply
+                return {'name': 'Windows Password', 'status': 'OK',
+                        'detail': f'Domain account "{username}" (dikelola oleh domain)'}
             output = result.stdout.strip().lower()
             if output == 'true':
                 return {'name': 'Windows Password', 'status': 'OK',
@@ -725,23 +731,30 @@ class AgentTrayApp:
                 lbl.setText(data.get(key, '-'))
             for key, lbl in device_labels.items():
                 lbl.setText(data.get(key, '-'))
-            checks = self._collect_health_checks()
-            ok_count = sum(1 for c in checks if c['status'] == 'OK')
-            health_summary_label.setText(f'{ok_count}/{len(checks)} checks OK')
-
-            health_table.setRowCount(len(checks))
-            for i, c in enumerate(checks):
-                health_table.setItem(i, 0, QtWidgets.QTableWidgetItem(c['name']))
-                status_item = QtWidgets.QTableWidgetItem(c['status'])
-                if c['status'] == 'OK':
-                    status_item.setForeground(QtGui.QColor('#22C55E'))
-                elif c['status'] == 'WARN':
-                    status_item.setForeground(QtGui.QColor('#F59E0B'))
-                else:
-                    status_item.setForeground(QtGui.QColor('#EF4444'))
-                health_table.setItem(i, 1, status_item)
-                health_table.setItem(i, 2, QtWidgets.QTableWidgetItem(c['detail']))
             refresh_hw()
+
+            def _run_health_checks_bg() -> None:
+                checks = self._collect_health_checks()
+
+                def _update_health_ui() -> None:
+                    ok_count = sum(1 for c in checks if c['status'] == 'OK')
+                    health_summary_label.setText(f'{ok_count}/{len(checks)} checks OK')
+                    health_table.setRowCount(len(checks))
+                    for i, c in enumerate(checks):
+                        health_table.setItem(i, 0, QtWidgets.QTableWidgetItem(c['name']))
+                        status_item = QtWidgets.QTableWidgetItem(c['status'])
+                        if c['status'] == 'OK':
+                            status_item.setForeground(QtGui.QColor('#22C55E'))
+                        elif c['status'] == 'WARN':
+                            status_item.setForeground(QtGui.QColor('#F59E0B'))
+                        else:
+                            status_item.setForeground(QtGui.QColor('#EF4444'))
+                        health_table.setItem(i, 1, status_item)
+                        health_table.setItem(i, 2, QtWidgets.QTableWidgetItem(c['detail']))
+
+                QtCore.QTimer.singleShot(0, _update_health_ui)
+
+            threading.Thread(target=_run_health_checks_bg, daemon=True).start()
 
         def on_nav_changed(row: int) -> None:
             if 0 <= row < content_stack.count():
