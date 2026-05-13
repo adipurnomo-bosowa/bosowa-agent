@@ -42,6 +42,7 @@ class AgentTrayApp:
         self._badge_timer: QtCore.QTimer | None = None
         self._badge_poll_lock = threading.Lock()
         self._running = False
+        self._last_compliance: dict | None = None
 
     def start(self) -> None:
         if self._running:
@@ -277,6 +278,34 @@ class AgentTrayApp:
         except Exception:
             checks.append({'name': 'System uptime', 'status': 'WARN', 'detail': 'Tidak terbaca'})
 
+        # Windows Password check
+        checks.append(self._check_windows_password())
+
+        # Software Compliance check
+        try:
+            from agent.core.software_compliance import check_compliance
+            compliance = check_compliance()
+            detail = f'{len(compliance.matched)}/{compliance.total} program OK ({compliance.score:.0f}%)'
+            checks.append({
+                'name': 'Software Compliance',
+                'status': compliance.status,
+                'detail': detail,
+                'unmatched': compliance.unmatched,
+            })
+        except Exception as e:
+            checks.append({
+                'name': 'Software Compliance',
+                'status': 'WARN',
+                'detail': f'Gagal scan: {e}',
+                'unmatched': [],
+            })
+
+        # Store compliance result for dashboard summary
+        for c in checks:
+            if c.get('name') == 'Software Compliance':
+                self._last_compliance = c
+                break
+
         return checks
 
     def _collect_device_summary(self) -> dict[str, str]:
@@ -341,6 +370,32 @@ class AgentTrayApp:
         except Exception:
             pass
         return result
+
+    @staticmethod
+    def _check_windows_password() -> dict:
+        """Check if current Windows user account has a password set."""
+        import subprocess
+        import getpass
+        try:
+            username = getpass.getuser()
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-Command',
+                 f'(Get-LocalUser -Name "{username}").PasswordRequired'],
+                capture_output=True, text=True, timeout=5
+            )
+            output = result.stdout.strip().lower()
+            if output == 'true':
+                return {'name': 'Windows Password', 'status': 'OK',
+                        'detail': f'User "{username}" sudah terproteksi'}
+            elif output == 'false':
+                return {'name': 'Windows Password', 'status': 'WARN',
+                        'detail': f'User "{username}" belum memiliki password'}
+            else:
+                return {'name': 'Windows Password', 'status': 'WARN',
+                        'detail': 'Tidak dapat memeriksa status password'}
+        except Exception as e:
+            return {'name': 'Windows Password', 'status': 'WARN',
+                    'detail': f'Gagal cek: {e}'}
 
     def _show_desktop_app(self) -> None:
         dlg = QtWidgets.QDialog()
