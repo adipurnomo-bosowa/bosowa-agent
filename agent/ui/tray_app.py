@@ -955,10 +955,17 @@ class AgentTrayApp:
                 _scroll_bottom()
 
         def _on_start() -> None:
-            ok = api_start_chat(_t[0]['id'])
+            try:
+                ok = api_start_chat(_t[0]['id'])
+            except Exception as exc:
+                logger.warning('start_chat failed: %s', exc)
+                QtWidgets.QMessageBox.warning(dlg, 'Gagal', f'Tidak bisa memulai chat:\n{exc}')
+                return
             if ok:
                 _t[0] = {**_t[0], 'chatStarted': True}
                 _load()
+            else:
+                QtWidgets.QMessageBox.warning(dlg, 'Gagal', 'Server menolak permintaan mulai chat.\nPastikan koneksi aktif dan token valid.')
 
         def _on_send() -> None:
             content = chat_input.toPlainText().strip()
