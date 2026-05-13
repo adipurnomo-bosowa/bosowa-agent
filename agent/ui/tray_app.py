@@ -1113,7 +1113,7 @@ class AgentTrayApp:
             is_admin = msg.get('senderType') == 'admin'
             try:
                 dt = datetime.fromisoformat(str(msg.get('createdAt', '')).replace('Z', '+00:00'))
-                time_str = dt.strftime('%H:%M')
+                time_str = dt.astimezone().strftime('%H:%M')
             except Exception:
                 time_str = ''
             container = QtWidgets.QWidget()
