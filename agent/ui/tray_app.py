@@ -411,20 +411,36 @@ class AgentTrayApp:
         dlg.resize(1040, 640)
         dlg.setStyleSheet(
             '''
-            QDialog { background: #0B1220; color: #E2E8F0; }
+            QDialog { background: #0B1220; color: #E2E8F0; font-family: Segoe UI; font-size: 13px; }
             QLabel { color: #E2E8F0; }
             QFrame#Sidebar { background: #0F172A; border-right: 1px solid #1F2937; }
             QFrame#MainPanel { background: #0B1220; }
-            QFrame#Card { background: #111827; border: 1px solid #1F2937; border-radius: 10px; }
+            QFrame#Card { background: #111C2D; border: 1px solid #1E3A52; border-radius: 14px; padding: 16px; }
             QPushButton { background: #1D4ED8; color: white; border: none; border-radius: 6px; padding: 8px 12px; }
             QPushButton:hover { background: #2563EB; }
             QListWidget { background: transparent; border: none; color: #CBD5E1; }
             QListWidget::item { padding: 11px 10px; border-radius: 7px; }
-            QListWidget::item:selected { background: #1E293B; color: #FFFFFF; }
+            QListWidget::item:selected { background: #1E3A52; border-left: 3px solid #3B82F6; color: #F1F5F9; }
+            QListWidget::item:hover:!selected { background: #1A2744; }
             QGroupBox { border: 1px solid #1F2937; border-radius: 8px; margin-top: 10px; padding-top: 14px; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #93C5FD; }
-            QFrame#CardFrame { background: #111827; border: 1px solid #1F2937; border-radius: 10px; }
-            QFrame#MetricCard { background: #111827; border: 1px solid #1F2937; border-radius: 10px; }
+            QFrame#CardFrame { background: #111C2D; border: 1px solid #1E3A52; border-radius: 14px; padding: 16px; }
+            QFrame#MetricCard { background: #111C2D; border: 1px solid #1E3A52; border-radius: 14px; padding: 16px; }
+            QTableWidget { gridline-color: #1E3A52; }
+            QTableWidget::item:alternate { background-color: #0F1927; }
+            QScrollBar:vertical {
+                background: #0D1117;
+                width: 8px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #334155;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
             '''
         )
 
