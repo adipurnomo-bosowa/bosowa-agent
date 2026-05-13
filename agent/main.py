@@ -2,11 +2,28 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import subprocess
 import sys
 import os
 import atexit
 from pathlib import Path
+
+_single_instance_mutex = None  # Keep reference so GC doesn't release it
+
+def _ensure_single_instance() -> bool:
+    """Create a named Windows mutex. Returns False if another instance is running."""
+    global _single_instance_mutex
+    if sys.platform != 'win32':
+        return True
+    try:
+        handle = ctypes.windll.kernel32.CreateMutexW(None, True, 'BosowAgent_SingleInstance')
+        if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            return False
+        _single_instance_mutex = handle
+        return True
+    except Exception:
+        return True  # fail open
 
 from agent import config
 from agent.auth.login import AuthTokens
@@ -47,6 +64,10 @@ def _spawn_watchdog() -> None:
 
 
 def main() -> None:
+    if not _ensure_single_instance():
+        # Another instance is already running — exit silently
+        sys.exit(0)
+
     setup_logger('BosowAgent')
     logger.info('=' * 60)
     logger.info('Bosowa Agent v%s starting', config.AGENT_VERSION)
@@ -72,8 +93,36 @@ def main() -> None:
     # Spawn watchdog companion process
     _spawn_watchdog()
 
-    # ALWAYS show overlay on startup — this is a lock screen, not optional
-    _run_auth_flow()
+    if not _try_auto_login():
+        _run_auth_flow()
+
+
+def _try_auto_login() -> bool:
+    """Return True if session restore succeeded (skips lock screen overlay)."""
+    from agent.auth.token_store import get_user_session
+    from agent.auth.login import append_login_log
+
+    token = _try_restore_session()
+    if not token:
+        # Attempt refresh
+        try:
+            from agent.auth.login import check_and_refresh_token
+            token = check_and_refresh_token()
+        except Exception:
+            pass
+
+    if not token:
+        return False
+
+    user = get_user_session()
+    if not user:
+        return False
+
+    logger.info('Auto-login: restored session for user=%s', user.get('email', '?'))
+    append_login_log(user.get('email', ''), user.get('name', ''), 'AUTO', 'restore', 'OK')
+    _start_tray(user)
+    _run_agent_service(AuthTokens(token=token, refresh_token=None, user=user))
+    return True
 
 
 def _try_restore_session() -> str | None:
