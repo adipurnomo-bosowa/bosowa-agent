@@ -39,6 +39,7 @@ USER_DISABLED_CODES = frozenset({'USER_DISABLED', 'ACCOUNT_DISABLED'})
 
 _LOGIN_LOG_FILE = Path(r'C:\ProgramData\BosowAgent\logs\login_history.log')
 _MAX_LOG_LINES = 1000
+_LOG_LOCK = threading.Lock()
 
 
 def message_for_agent_login_failure(status_code: int, response: requests.Response | None) -> str | None:
@@ -113,7 +114,7 @@ def direct_login(email: str, password: str) -> AuthTokens | None:
         if refresh_token:
             store_refresh_token(refresh_token)
         store_user_session(user)
-        append_login_log(user.get('email', ''), user.get('name', ''), 'LOGIN', 'direct', 'OK')
+        append_login_log(user.get('email', '') or email, user.get('name', ''), 'LOGIN', 'direct', 'OK')
 
         logger.info('Direct login succeeded for user=%s', user.get('name', email))
         return AuthTokens(token, refresh_token, user)
@@ -244,20 +245,26 @@ def check_and_refresh_token() -> str | None:
 def append_login_log(email: str, name: str, event: str, method: str, result: str) -> None:
     """Append a line to login_history.log. Rotate if > 1000 lines. Thread-safe."""
     def _write():
-        try:
-            _LOGIN_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-            ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            line = f'{ts} | {event:<6} | {email:<30} | {name:<20} | method={method:<7} | {result}\n'
-            if _LOGIN_LOG_FILE.exists():
-                lines = _LOGIN_LOG_FILE.read_text(encoding='utf-8').splitlines(keepends=True)
-                if len(lines) >= _MAX_LOG_LINES:
-                    lines = lines[-((_MAX_LOG_LINES - 1)):]
-                lines.append(line)
-                _LOGIN_LOG_FILE.write_text(''.join(lines), encoding='utf-8')
-            else:
-                _LOGIN_LOG_FILE.write_text(line, encoding='utf-8')
-        except Exception as e:
-            logger.warning('Failed to write login log: %s', e)
+        import os
+        with _LOG_LOCK:
+            try:
+                _LOGIN_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+                ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                line = f'{ts} | {event:<6} | {email:<30} | {name:<20} | method={method:<7} | {result}\n'
+                if _LOGIN_LOG_FILE.exists():
+                    lines = _LOGIN_LOG_FILE.read_text(encoding='utf-8').splitlines(keepends=True)
+                    if len(lines) >= _MAX_LOG_LINES:
+                        lines = lines[-((_MAX_LOG_LINES - 1)):]
+                    lines.append(line)
+                    tmp = _LOGIN_LOG_FILE.with_suffix('.tmp')
+                    tmp.write_text(''.join(lines), encoding='utf-8')
+                    os.replace(tmp, _LOGIN_LOG_FILE)
+                else:
+                    tmp = _LOGIN_LOG_FILE.with_suffix('.tmp')
+                    tmp.write_text(line, encoding='utf-8')
+                    os.replace(tmp, _LOGIN_LOG_FILE)
+            except Exception as e:
+                logger.warning('Failed to write login log: %s', e)
     threading.Thread(target=_write, daemon=True).start()
 
 
