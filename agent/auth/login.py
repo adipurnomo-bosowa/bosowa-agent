@@ -5,6 +5,8 @@ import asyncio
 import json
 import threading
 import uuid
+from datetime import datetime
+from pathlib import Path
 
 import requests
 import certifi
@@ -13,6 +15,7 @@ from agent import config
 from agent.auth.token_store import (
     store_device_token,
     store_refresh_token,
+    store_user_session,
     get_device_token,
     get_refresh_token,
     store_session_code,
@@ -29,6 +32,13 @@ from agent.utils.logger import logger
 # ---------------------------------------------------------------------------
 
 USER_DISABLED_CODES = frozenset({'USER_DISABLED', 'ACCOUNT_DISABLED'})
+
+# ---------------------------------------------------------------------------
+# Login history log
+# ---------------------------------------------------------------------------
+
+_LOGIN_LOG_FILE = Path(r'C:\ProgramData\BosowAgent\logs\login_history.log')
+_MAX_LOG_LINES = 1000
 
 
 def message_for_agent_login_failure(status_code: int, response: requests.Response | None) -> str | None:
@@ -102,12 +112,15 @@ def direct_login(email: str, password: str) -> AuthTokens | None:
         store_device_token(token)
         if refresh_token:
             store_refresh_token(refresh_token)
+        store_user_session(user)
+        append_login_log(user.get('email', ''), user.get('name', ''), 'LOGIN', 'direct', 'OK')
 
         logger.info('Direct login succeeded for user=%s', user.get('name', email))
         return AuthTokens(token, refresh_token, user)
 
     except requests.exceptions.ConnectionError:
         logger.warning('Server unreachable for direct login')
+        append_login_log(email, '', 'LOGIN', 'direct', 'FAIL')
         return None
     except requests.HTTPError as e:
         resp = e.response
@@ -118,9 +131,11 @@ def direct_login(email: str, password: str) -> AuthTokens | None:
             if hint:
                 extra = f' ({hint})'
         logger.warning('Direct login HTTP error %s: %s%s', code, e, extra)
+        append_login_log(email, '', 'LOGIN', 'direct', 'FAIL')
         return None
     except Exception as e:
         logger.error('Direct login failed: %s', e)
+        append_login_log(email, '', 'LOGIN', 'direct', 'FAIL')
         return None
 
 
@@ -223,10 +238,35 @@ def check_and_refresh_token() -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Login history log helpers
+# ---------------------------------------------------------------------------
+
+def append_login_log(email: str, name: str, event: str, method: str, result: str) -> None:
+    """Append a line to login_history.log. Rotate if > 1000 lines. Thread-safe."""
+    def _write():
+        try:
+            _LOGIN_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            line = f'{ts} | {event:<6} | {email:<30} | {name:<20} | method={method:<7} | {result}\n'
+            if _LOGIN_LOG_FILE.exists():
+                lines = _LOGIN_LOG_FILE.read_text(encoding='utf-8').splitlines(keepends=True)
+                if len(lines) >= _MAX_LOG_LINES:
+                    lines = lines[-((_MAX_LOG_LINES - 1)):]
+                lines.append(line)
+                _LOGIN_LOG_FILE.write_text(''.join(lines), encoding='utf-8')
+            else:
+                _LOGIN_LOG_FILE.write_text(line, encoding='utf-8')
+        except Exception as e:
+            logger.warning('Failed to write login log: %s', e)
+    threading.Thread(target=_write, daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
 # Logout
 # ---------------------------------------------------------------------------
 
-def logout() -> None:
+def logout(email: str = '', name: str = '') -> None:
     """Wipe all stored credentials."""
     clear_all_credentials()
     logger.info('Agent logged out, credentials cleared')
+    append_login_log(email, name, 'LOGOUT', 'manual', 'OK')
