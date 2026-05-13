@@ -423,6 +423,8 @@ class AgentTrayApp:
             QListWidget::item:selected { background: #1E293B; color: #FFFFFF; }
             QGroupBox { border: 1px solid #1F2937; border-radius: 8px; margin-top: 10px; padding-top: 14px; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #93C5FD; }
+            QFrame#CardFrame { background: #111827; border: 1px solid #1F2937; border-radius: 10px; }
+            QFrame#MetricCard { background: #111827; border: 1px solid #1F2937; border-radius: 10px; }
             '''
         )
 
@@ -529,29 +531,86 @@ class AgentTrayApp:
         dashboard_layout.setContentsMargins(0, 0, 0, 0)
         dashboard_layout.setSpacing(10)
 
-        user_group = QtWidgets.QGroupBox('Summary User')
-        user_form = QtWidgets.QFormLayout(user_group)
-        user_form.addRow('Nama', QtWidgets.QLabel(str(self.user.get('name') or '-')))
-        user_form.addRow('Email', QtWidgets.QLabel(str(self.user.get('email') or '-')))
-        user_form.addRow('Employee ID', QtWidgets.QLabel(str(self.user.get('employeeId') or '-')))
-        user_form.addRow('Business Unit', QtWidgets.QLabel(str(self.user.get('businessUnit') or '-')))
-        dashboard_layout.addWidget(user_group)
+        # === USER INFO CARD ===
+        user_card = QtWidgets.QFrame()
+        user_card.setObjectName('CardFrame')
+        user_card_grid = QtWidgets.QGridLayout(user_card)
+        user_card_grid.setContentsMargins(16, 16, 16, 16)
+        user_card_grid.setSpacing(8)
 
-        device_group = QtWidgets.QGroupBox('Summary Laptop')
-        device_form = QtWidgets.QFormLayout(device_group)
+        lbl_nama = QtWidgets.QLabel(f'Nama: {self.user.get("name") or "-"}')
+        lbl_bu = QtWidgets.QLabel(f'BU: {self.user.get("businessUnit") or self.user.get("role") or "-"}')
+        lbl_email = QtWidgets.QLabel(f'Email: {self.user.get("email") or "-"}')
+        lbl_eid = QtWidgets.QLabel(f'Employee ID: {self.user.get("employeeId") or self.user.get("id") or "-"}')
+
+        for _lbl in [lbl_nama, lbl_bu, lbl_email, lbl_eid]:
+            _lbl.setStyleSheet('color: #E2E8F0; font-size: 12px;')
+
+        user_card_grid.addWidget(lbl_nama, 0, 0)
+        user_card_grid.addWidget(lbl_bu, 0, 1)
+        user_card_grid.addWidget(lbl_email, 1, 0)
+        user_card_grid.addWidget(lbl_eid, 1, 1)
+        dashboard_layout.addWidget(user_card)
+
+        # === METRIC CARDS (4 in a row) ===
+        def make_metric_card(title: str) -> tuple:
+            """Returns (frame, value_label, status_label)."""
+            frame = QtWidgets.QFrame()
+            frame.setObjectName('MetricCard')
+            frame.setMinimumWidth(90)
+            vbox = QtWidgets.QVBoxLayout(frame)
+            vbox.setContentsMargins(12, 14, 12, 14)
+            vbox.setAlignment(QtCore.Qt.AlignCenter)
+
+            val_lbl = QtWidgets.QLabel('—')
+            val_lbl.setAlignment(QtCore.Qt.AlignCenter)
+            val_lbl.setStyleSheet('color: #F1F5F9; font-size: 28px; font-weight: 700;')
+
+            title_lbl = QtWidgets.QLabel(title)
+            title_lbl.setAlignment(QtCore.Qt.AlignCenter)
+            title_lbl.setStyleSheet('color: #94A3B8; font-size: 10px;')
+
+            status_lbl = QtWidgets.QLabel('—')
+            status_lbl.setAlignment(QtCore.Qt.AlignCenter)
+            status_lbl.setStyleSheet('color: #22C55E; font-size: 11px; font-weight: 600;')
+
+            vbox.addWidget(val_lbl)
+            vbox.addWidget(title_lbl)
+            vbox.addWidget(status_lbl)
+            return frame, val_lbl, status_lbl
+
+        ticket_card_frame, ticket_card_val, ticket_card_status = make_metric_card('Tiket Aktif')
+        cpu_card_frame, cpu_card_val, cpu_card_status = make_metric_card('CPU')
+        ram_card_frame, ram_card_val, ram_card_status = make_metric_card('RAM')
+        hdd_card_frame, hdd_card_val, hdd_card_status = make_metric_card('HDD C:')
+
+        # Store as instance vars so refresh_summary can update them
+        self.ticket_card_val = ticket_card_val
+        self.ticket_card_status = ticket_card_status
+        self.cpu_card_val = cpu_card_val
+        self.cpu_card_status = cpu_card_status
+        self.ram_card_val = ram_card_val
+        self.ram_card_status = ram_card_status
+        self.hdd_card_val = hdd_card_val
+        self.hdd_card_status = hdd_card_status
+
+        metrics_row = QtWidgets.QHBoxLayout()
+        metrics_row.setSpacing(8)
+        for _card in [ticket_card_frame, cpu_card_frame, ram_card_frame, hdd_card_frame]:
+            metrics_row.addWidget(_card)
+        dashboard_layout.addLayout(metrics_row)
+
+        # === QUICK HEALTH STATUS BAR ===
+        health_summary_label = QtWidgets.QLabel('Memuat status kesehatan...')
+        health_summary_label.setStyleSheet('color: #94A3B8; font-size: 11px; padding: 6px 0;')
+        self.dashboard_health_label = health_summary_label
+        dashboard_layout.addWidget(health_summary_label)
+
+        dashboard_layout.addStretch()
+
+        # summary_labels kept for Device Health page (page index 1)
         summary_labels: dict[str, QtWidgets.QLabel] = {}
-        for key in ['Hostname', 'OS', 'MAC', 'IP', 'CPU', 'RAM', 'Disk C:', 'Last update']:
-            lbl = QtWidgets.QLabel('-')
-            summary_labels[key] = lbl
-            device_form.addRow(key, lbl)
-        dashboard_layout.addWidget(device_group)
 
-        health_group = QtWidgets.QGroupBox('Quick Health Check')
-        health_layout = QtWidgets.QVBoxLayout(health_group)
-        health_summary_label = QtWidgets.QLabel('-')
-        health_summary_label.setStyleSheet('color: #93C5FD;')
-        health_layout.addWidget(health_summary_label)
-        dashboard_layout.addWidget(health_group)
         content_stack.addWidget(dashboard_page)
 
         # ── Device Health Check page (index 1) ────────────────────
@@ -732,18 +791,80 @@ class AgentTrayApp:
                 drv_row.addWidget(pct_lbl)
                 hw_rows_layout.addWidget(drv_w)
 
+        def _update_metric_card(val_lbl, status_lbl, value_str: str, pct, thresholds=None, blue=False):
+            val_lbl.setText(value_str)
+            if blue or pct is None:
+                status_lbl.setText('AKTIF')
+                status_lbl.setStyleSheet('color: #60A5FA; font-size: 11px; font-weight: 600;')
+                return
+            warn_thresh, err_thresh = thresholds
+            if pct >= err_thresh:
+                color, text = '#EF4444', 'KRITIS'
+            elif pct >= warn_thresh:
+                color, text = '#F59E0B', 'WASPADA'
+            else:
+                color, text = '#22C55E', 'AMAN'
+            status_lbl.setText(text)
+            status_lbl.setStyleSheet(f'color: {color}; font-size: 11px; font-weight: 600;')
+
         def refresh_summary() -> None:
             data = self._collect_device_summary()
             for key, lbl in summary_labels.items():
                 lbl.setText(data.get(key, '-'))
             refresh_hw()
 
+            # Update metric cards from device summary
+            def _parse_pct(raw) -> float:
+                try:
+                    return float(str(raw).split('%')[0].strip())
+                except Exception:
+                    return 0.0
+
+            cpu_raw = data.get('CPU', '0%')
+            cpu_val = _parse_pct(cpu_raw)
+            _update_metric_card(self.cpu_card_val, self.cpu_card_status,
+                                 f'{cpu_val:.0f}%', cpu_val, (60, 85))
+
+            ram_raw = data.get('RAM', '0%')
+            ram_val = _parse_pct(ram_raw)
+            _update_metric_card(self.ram_card_val, self.ram_card_status,
+                                 f'{ram_val:.0f}%', ram_val, (60, 85))
+
+            hdd_raw = data.get('Disk C:', '0%')
+            hdd_val = _parse_pct(hdd_raw)
+            _update_metric_card(self.hdd_card_val, self.hdd_card_status,
+                                 f'{hdd_val:.0f}%', hdd_val, (75, 90))
+
+            # Fetch ticket count in background
+            def _fetch_ticket_count():
+                try:
+                    tickets = list_my_tickets()
+                    active = [t for t in tickets if t.get('status') in ('OPEN', 'IN_PROGRESS')]
+                    count = len(active)
+                except Exception:
+                    count = 0
+
+                def _ui():
+                    self.ticket_card_val.setText(str(count))
+                    self.ticket_card_status.setText('AKTIF')
+                    self.ticket_card_status.setStyleSheet('color: #60A5FA; font-size: 11px; font-weight: 600;')
+
+                QtCore.QTimer.singleShot(0, _ui)
+
+            threading.Thread(target=_fetch_ticket_count, daemon=True).start()
+
             def _run_health_checks_bg() -> None:
                 checks = self._collect_health_checks()
 
                 def _update_health_ui() -> None:
                     ok_count = sum(1 for c in checks if c['status'] == 'OK')
-                    health_summary_label.setText(f'{ok_count}/{len(checks)} checks OK')
+                    compliance = next((c for c in checks if c.get('name') == 'Software Compliance'), None)
+                    compliance_detail = ''
+                    if compliance:
+                        compliance_detail = f'  •  Software: {compliance["detail"]}'
+                    health_summary_label.setText(f'{ok_count}/{len(checks)} checks OK{compliance_detail}')
+                    if hasattr(self, 'dashboard_health_label'):
+                        self.dashboard_health_label.setText(f'{ok_count}/{len(checks)} checks OK{compliance_detail}')
                     health_table.setRowCount(len(checks))
                     for i, c in enumerate(checks):
                         health_table.setItem(i, 0, QtWidgets.QTableWidgetItem(c['name']))
