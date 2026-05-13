@@ -19,6 +19,8 @@ a = Analysis(
     datas=[
         # Bundle lockscreen branding assets
         (str(ROOT.parent / 'PORTAL.png'), 'assets'),
+        # Software whitelist CSV
+        (str(ROOT / 'config' / 'whitelist.csv'), 'config'),
     ],
     hiddenimports=[
         # Windows WMI
@@ -82,6 +84,10 @@ a = Analysis(
         'agent.ui.tray_app',
         'agent.api',
         'agent.api.tickets',
+        # Software compliance
+        'agent.core.software_compliance',
+        # CSV
+        'csv',
     ],
     hookspath=[],
     runtime_hooks=[],
