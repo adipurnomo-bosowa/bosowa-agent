@@ -40,6 +40,7 @@ class AgentTrayApp:
         self._chat_seen_counts: dict[str, int] = {}
         self._unread_ticket_ids: set[str] = set()
         self._badge_timer: QtCore.QTimer | None = None
+        self._badge_poll_lock = threading.Lock()
         self._running = False
 
     def start(self) -> None:
@@ -154,6 +155,8 @@ class AgentTrayApp:
 
         def _check() -> None:
             def _bg() -> None:
+                if not self._badge_poll_lock.acquire(blocking=False):
+                    return  # Previous check still running, skip this tick
                 try:
                     tickets = list_my_tickets()
                     new_unread: set[str] = set(self._unread_ticket_ids)
@@ -170,6 +173,8 @@ class AgentTrayApp:
                     QtCore.QTimer.singleShot(0, lambda u=frozenset(new_unread): _apply(u))
                 except Exception:
                     pass
+                finally:
+                    self._badge_poll_lock.release()
 
             def _apply(unread: frozenset) -> None:
                 self._unread_ticket_ids = set(unread)
@@ -304,6 +309,38 @@ class AgentTrayApp:
             'Disk C:': disk,
             'Last update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         }
+
+    @staticmethod
+    def _collect_battery_storage() -> dict:
+        result: dict = {'battery': None, 'drives': []}
+        if not psutil:
+            return result
+        try:
+            batt = psutil.sensors_battery()
+            if batt is not None:
+                result['battery'] = {
+                    'pct': batt.percent,
+                    'charging': batt.power_plugged,
+                }
+        except Exception:
+            pass
+        try:
+            for part in psutil.disk_partitions(all=False):
+                if 'cdrom' in (part.opts or '') or not part.fstype:
+                    continue
+                try:
+                    usage = psutil.disk_usage(part.mountpoint)
+                    result['drives'].append({
+                        'mount': part.mountpoint.rstrip('\\').rstrip('/'),
+                        'used_gb': usage.used / (1024 ** 3),
+                        'total_gb': usage.total / (1024 ** 3),
+                        'pct': usage.percent,
+                    })
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return result
 
     def _show_desktop_app(self) -> None:
         dlg = QtWidgets.QDialog()
@@ -470,6 +507,19 @@ class AgentTrayApp:
             device_labels[key] = lbl
             device_card_form.addRow(key, lbl)
         device_layout.addWidget(device_card)
+
+        hw_group = QtWidgets.QGroupBox('Baterai & Storage')
+        hw_group_vbox = QtWidgets.QVBoxLayout(hw_group)
+        hw_group_vbox.setSpacing(8)
+        hw_group_vbox.setContentsMargins(10, 12, 10, 10)
+        hw_rows_container = QtWidgets.QWidget()
+        hw_rows_container.setStyleSheet('background: transparent;')
+        hw_rows_layout = QtWidgets.QVBoxLayout(hw_rows_container)
+        hw_rows_layout.setContentsMargins(0, 0, 0, 0)
+        hw_rows_layout.setSpacing(10)
+        hw_group_vbox.addWidget(hw_rows_container)
+        device_layout.addWidget(hw_group)
+
         device_layout.addStretch(1)
         content_stack.addWidget(device_page)
 
@@ -548,6 +598,72 @@ class AgentTrayApp:
         panel_layout.addWidget(refresh_btn, 0, QtCore.Qt.AlignRight)
         root.addWidget(panel, 1)
 
+        def _make_progress_bar(pct: float, color: str) -> QtWidgets.QProgressBar:
+            bar = QtWidgets.QProgressBar()
+            bar.setRange(0, 100)
+            bar.setValue(int(pct))
+            bar.setTextVisible(False)
+            bar.setFixedHeight(14)
+            bar.setStyleSheet(
+                f'QProgressBar {{ background: #1F2937; border: 1px solid #374151;'
+                f' border-radius: 4px; }}'
+                f'QProgressBar::chunk {{ background: {color}; border-radius: 3px; }}'
+            )
+            return bar
+
+        def refresh_hw() -> None:
+            while hw_rows_layout.count():
+                item = hw_rows_layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+
+            data = self._collect_battery_storage()
+
+            # Battery row
+            batt = data.get('battery')
+            batt_pct = batt['pct'] if batt else 0.0
+            charging = batt['charging'] if batt else False
+            batt_status = 'Charging ⚡' if charging else 'Discharging'
+            batt_color = '#22C55E' if charging else '#F59E0B'
+
+            batt_w = QtWidgets.QWidget()
+            batt_w.setStyleSheet('background: transparent;')
+            batt_row = QtWidgets.QHBoxLayout(batt_w)
+            batt_row.setContentsMargins(0, 0, 0, 0)
+            batt_row.setSpacing(10)
+            batt_lbl = QtWidgets.QLabel(f'🔋 Baterai  {batt_pct:.0f}%  {batt_status}')
+            batt_lbl.setStyleSheet('color: #CBD5E1; font-size: 12px; background: transparent;')
+            batt_lbl.setFixedWidth(210)
+            batt_bar = _make_progress_bar(batt_pct if batt else 0, batt_color)
+            batt_row.addWidget(batt_lbl)
+            batt_row.addWidget(batt_bar, 1)
+            hw_rows_layout.addWidget(batt_w)
+
+            # Drive rows
+            for drv in data.get('drives', []):
+                mount = drv['mount']
+                used = drv['used_gb']
+                total = drv['total_gb']
+                pct = drv['pct']
+                chunk_color = '#EF4444' if pct >= 90 else '#F59E0B' if pct >= 75 else '#3B82F6'
+
+                drv_w = QtWidgets.QWidget()
+                drv_w.setStyleSheet('background: transparent;')
+                drv_row = QtWidgets.QHBoxLayout(drv_w)
+                drv_row.setContentsMargins(0, 0, 0, 0)
+                drv_row.setSpacing(10)
+                drv_lbl = QtWidgets.QLabel(f'💾 {mount}  {used:.0f} / {total:.0f} GB')
+                drv_lbl.setStyleSheet('color: #CBD5E1; font-size: 12px; background: transparent;')
+                drv_lbl.setFixedWidth(210)
+                drv_bar = _make_progress_bar(pct, chunk_color)
+                pct_lbl = QtWidgets.QLabel(f'{pct:.0f}%')
+                pct_lbl.setStyleSheet('color: #94A3B8; font-size: 11px; background: transparent;')
+                pct_lbl.setFixedWidth(36)
+                drv_row.addWidget(drv_lbl)
+                drv_row.addWidget(drv_bar, 1)
+                drv_row.addWidget(pct_lbl)
+                hw_rows_layout.addWidget(drv_w)
+
         def refresh_summary() -> None:
             data = self._collect_device_summary()
             for key, lbl in summary_labels.items():
@@ -570,6 +686,7 @@ class AgentTrayApp:
                     status_item.setForeground(QtGui.QColor('#EF4444'))
                 health_table.setItem(i, 1, status_item)
                 health_table.setItem(i, 2, QtWidgets.QTableWidgetItem(c['detail']))
+            refresh_hw()
 
         def on_nav_changed(row: int) -> None:
             if 0 <= row < content_stack.count():
