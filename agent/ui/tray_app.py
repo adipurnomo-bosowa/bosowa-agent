@@ -508,8 +508,11 @@ class AgentTrayApp:
         header_sub.setStyleSheet('color: #94A3B8;')
         panel_layout.addWidget(header_sub)
 
-        cards_row = QtWidgets.QHBoxLayout()
-        panel_layout.addLayout(cards_row)
+        cards_container = QtWidgets.QWidget()
+        cards_container.setStyleSheet('background: transparent;')
+        cards_row = QtWidgets.QHBoxLayout(cards_container)
+        cards_row.setContentsMargins(0, 0, 0, 0)
+        panel_layout.addWidget(cards_container)
 
         online_card = QtWidgets.QFrame()
         online_card.setObjectName('Card')
@@ -633,6 +636,7 @@ class AgentTrayApp:
 
         # ── Device Health Check page (index 1) ────────────────────
         device_health_page = QtWidgets.QWidget()
+        device_health_page.setStyleSheet('background: #0B1220;')
         device_health_scroll = QtWidgets.QScrollArea()
         device_health_scroll.setWidgetResizable(True)
         device_health_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
@@ -669,6 +673,7 @@ class AgentTrayApp:
         health_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
         health_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         health_table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        health_table.verticalHeader().setVisible(False)
         health_check_vbox.addWidget(health_table)
 
         # Expandable unmatched programs list
@@ -702,6 +707,7 @@ class AgentTrayApp:
         content_stack.addWidget(device_health_scroll)
 
         tickets_page = QtWidgets.QWidget()
+        tickets_page.setStyleSheet('background: #0B1220;')
         tickets_layout = QtWidgets.QVBoxLayout(tickets_page)
         tickets_layout.setContentsMargins(0, 0, 0, 0)
         tickets_layout.setSpacing(10)
@@ -734,6 +740,7 @@ class AgentTrayApp:
         ticket_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         ticket_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         ticket_table.setToolTip('Klik baris untuk lihat detail / balas catatan admin')
+        ticket_table.verticalHeader().setVisible(False)
         tickets_layout.addWidget(ticket_table)
         ticket_data_desktop: list[dict] = []
 
@@ -920,6 +927,7 @@ class AgentTrayApp:
             threading.Thread(target=_run_health_checks_bg, daemon=True).start()
 
         def on_nav_changed(row: int) -> None:
+            cards_container.setVisible(row == 0)
             if 0 <= row < content_stack.count():
                 content_stack.setCurrentIndex(row)
                 header.setText(nav_titles[row])
