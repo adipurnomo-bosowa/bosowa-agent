@@ -39,7 +39,8 @@ def update_replace_marker_fresh(max_age_sec: float = 240.0) -> bool:
         if not MARKER.is_file():
             return False
         age = time.time() - MARKER.stat().st_mtime
-        return age >= 0 and age < max_age_sec
+        # Windows can report mtime slightly ahead of time.time(); allow tiny skew.
+        return age > -5.0 and age < max_age_sec
     except OSError:
         return False
 

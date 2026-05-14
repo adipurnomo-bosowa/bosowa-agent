@@ -39,6 +39,8 @@ async def heartbeat_loop(socket_client: AgentSocketClient) -> None:
                 'ram_total_gb': round(vm.total / (1024**3), 2),
                 'disk_percent': _get_primary_disk_usage(),
                 'ip_address': static_ctx['ip_address'],
+                # Portal UI + DB stay in sync after updates (register alone can be missed).
+                'agent_version': config.AGENT_VERSION,
             }
             payload['softwareList'] = cached_sw_list[:200]  # cap at 200 entries
             # Refresh IP geolocation at most every 10 minutes; otherwise reuse cache
