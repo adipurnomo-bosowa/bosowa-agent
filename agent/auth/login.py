@@ -194,8 +194,10 @@ def refresh_token_action(refresh_token: str) -> str | None:
         )
         resp.raise_for_status()
         data = resp.json()
+        from datetime import datetime, timezone, timedelta
         new_token = data['token']
-        store_device_token(new_token)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=14)
+        store_device_token(new_token, expires_at=expires_at)
         new_refresh = data.get('refresh_token')
         if new_refresh:
             store_refresh_token(new_refresh)

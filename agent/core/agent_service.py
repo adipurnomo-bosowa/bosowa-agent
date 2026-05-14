@@ -77,6 +77,7 @@ class AgentService:
         self._socket = AgentSocketClient(
             server_url=config.SOCKET_URL,
             token=self.tokens.token,
+            get_token=lambda: self.tokens.token,
             on_command=self._handle_command,
         )
 

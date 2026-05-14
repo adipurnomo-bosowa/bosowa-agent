@@ -24,10 +24,12 @@ class AgentSocketClient:
         self,
         server_url: str,
         token: str,
+        get_token: Callable[[], str] | None = None,
         on_command: CommandHandler | None = None,
     ):
         self.server_url = server_url
-        self.token = token
+        self._token = token
+        self._get_token = get_token
         self._on_command = on_command
         self._heartbeat_queue: list[dict] = []
 
@@ -40,6 +42,16 @@ class AgentSocketClient:
         self._connected = False
         self._connect_done = asyncio.Event()
         self._setup_handlers()
+
+    @property
+    def token(self) -> str:
+        if self._get_token:
+            return self._get_token()
+        return self._token
+
+    @token.setter
+    def token(self, value: str) -> None:
+        self._token = value
 
     # ------------------------------------------------------------------
     # Handlers
@@ -146,6 +158,23 @@ class AgentSocketClient:
             from agent.auth.token_store import clear_all_credentials
             import os
             clear_all_credentials()
+            os._exit(0)
+
+        @sio.on('force_reauth')
+        async def on_force_reauth(data: dict):
+            """Server pushes this when the agent token is rejected (expired/invalid).
+            Clear credentials and relaunch so the login screen is shown.
+            """
+            reason = (data or {}).get('reason', 'unknown')
+            logger.warning('force_reauth from server (reason=%s) — clearing credentials and relaunching', reason)
+            try:
+                from agent.auth.token_store import clear_all_credentials
+                from agent.utils.relaunch import relaunch_agent_process
+                clear_all_credentials()
+                relaunch_agent_process()
+            except Exception as e:
+                logger.error('force_reauth: failed to relaunch cleanly: %s', e)
+            import os
             os._exit(0)
 
         @sio.on('force_lock')

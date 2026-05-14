@@ -129,22 +129,35 @@ def _try_auto_login() -> bool:
 def _try_restore_session() -> str | None:
     from agent.auth.token_store import get_device_token, get_device_token_expiry
     from datetime import datetime, timezone, timedelta
+    import base64, json as _json
 
     token = get_device_token()
     if not token:
         return None
 
     expiry = get_device_token_expiry()
+
+    if expiry is None:
+        # Try to decode exp claim from JWT payload (no signature verify needed)
+        try:
+            payload_b64 = token.split('.')[1]
+            payload_b64 += '=' * (4 - len(payload_b64) % 4)
+            payload = _json.loads(base64.b64decode(payload_b64))
+            exp = payload.get('exp')
+            if exp:
+                expiry = datetime.fromtimestamp(exp, tz=timezone.utc)
+        except Exception:
+            pass
+
     if expiry:
         now = datetime.now(timezone.utc)
-        if now < expiry:
+        if now < expiry - timedelta(minutes=2):
             return token
-        logger.info('Stored token expired, requiring re-auth')
-    else:
-        # No expiry stored – assume valid
-        return token
+        logger.info('Stored token expired, attempting refresh')
+        return None
 
-    return None
+    # No expiry info at all — assume valid (legacy token without exp claim)
+    return token
 
 
 def _run_auth_flow() -> None:
