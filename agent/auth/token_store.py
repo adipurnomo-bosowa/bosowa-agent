@@ -345,14 +345,20 @@ def consume_lock_message() -> str | None:
 # ---------------------------------------------------------------------------
 
 def _restrict_file(path: 'os.PathLike') -> None:
-    """Remove inherited ACLs, grant Administrators + SYSTEM full only."""
+    """Remove inherited ACLs; grant SYSTEM, Administrators, and the current
+    user Full Control.  The current user MUST retain access because the agent
+    process runs as that user and needs to read its own token file.
+    Without this, icacls strips user access and every read returns EACCES,
+    breaking auto-login on the next start (the login-loop bug).
+    """
     try:
         import subprocess
-        result = subprocess.run(
-            ['icacls', str(path), '/inheritance:r', '/grant:r',
-             'SYSTEM:F', 'Administrators:F'],
-            capture_output=True, timeout=5,
-        )
+        username = os.environ.get('USERNAME', '').strip()
+        cmd = ['icacls', str(path), '/inheritance:r', '/grant:r',
+               'SYSTEM:F', 'Administrators:F']
+        if username:
+            cmd.append(f'{username}:F')
+        result = subprocess.run(cmd, capture_output=True, timeout=5)
         if result.returncode != 0:
             logger.warning('icacls failed on %s: %s', path, result.stderr.decode())
     except Exception as e:

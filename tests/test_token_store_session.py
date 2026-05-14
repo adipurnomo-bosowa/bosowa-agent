@@ -1,4 +1,6 @@
 """Tests for user session persistence in token_store."""
+import os
+import sys
 from unittest.mock import patch, MagicMock
 
 from agent.auth.token_store import (
@@ -84,3 +86,38 @@ def test_clear_user_session_no_op_when_no_user_key():
          patch(f'{MODULE}._write_token_file', side_effect=lambda d: written.append(d)):
         clear_user_session()
         assert written == []  # _write_token_file should NOT be called
+
+
+def test_restrict_file_includes_current_user(tmp_path):
+    """icacls command must include the current USERNAME so the agent can read its own files.
+
+    This guards against the login-loop bug where _restrict_file stripped user
+    access and every subsequent read returned [Errno 13] Permission denied.
+    """
+    from agent.auth import token_store as ts
+
+    test_file = tmp_path / 'tokens.enc'
+    test_file.write_bytes(b'dummy')
+
+    captured_cmds: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        captured_cmds.append(list(cmd))
+        m = MagicMock()
+        m.returncode = 0
+        return m
+
+    fake_username = 'testuser'
+    with patch('subprocess.run', side_effect=fake_run), \
+         patch.dict(os.environ, {'USERNAME': fake_username}):
+        ts._restrict_file(test_file)
+
+    assert captured_cmds, '_restrict_file did not call icacls'
+    cmd = captured_cmds[0]
+    # Current user must be in the grant list
+    assert any(fake_username in part for part in cmd), (
+        f'USERNAME "{fake_username}" not found in icacls command: {cmd}'
+    )
+    # Must also grant SYSTEM and Administrators
+    assert any('SYSTEM' in p for p in cmd)
+    assert any('Administrators' in p for p in cmd)
