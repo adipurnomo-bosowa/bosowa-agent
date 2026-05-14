@@ -665,6 +665,10 @@ class AgentTrayApp:
         health_check_vbox.setSpacing(8)
         health_check_vbox.setContentsMargins(10, 12, 10, 10)
 
+        health_summary_label = QtWidgets.QLabel('Memuat status kesehatan...')
+        health_summary_label.setStyleSheet('color: #94A3B8; font-size: 11px; padding: 2px 0 4px 0;')
+        health_check_vbox.addWidget(health_summary_label)
+
         health_table = QtWidgets.QTableWidget()
         health_table.setColumnCount(3)
         health_table.setHorizontalHeaderLabels(['Check', 'Status', 'Detail'])
