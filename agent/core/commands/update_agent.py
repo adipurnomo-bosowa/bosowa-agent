@@ -10,7 +10,7 @@ from agent.utils.logger import logger
 
 async def handle_update_agent(
     payload: dict,
-    emit_progress: Callable[[str, int, str], Awaitable[None]],
+    emit_progress: Callable[..., Awaitable[None]],
     token: str,
 ) -> None:
     """Download versi terbaru dari server dan apply. Tidak return jika berhasil (os._exit)."""
@@ -58,6 +58,15 @@ async def handle_update_agent(
     if not new_exe:
         await emit_progress('error', 0, 'Download gagal. Periksa koneksi dan URL di server.')
         return
+
+    await emit_progress(
+        'restarting',
+        99,
+        f'Menyiapkan restart ke v{server_version}...',
+        target_version=server_version,
+    )
+    # Beri waktu singkat supaya event sempat terkirim sebelum proses berhenti (frozen).
+    await asyncio.sleep(0.4)
 
     await emit_progress('replacing', 100, 'Mengganti file agent...')
     apply_update_and_relaunch(new_exe)

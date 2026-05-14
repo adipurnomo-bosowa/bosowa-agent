@@ -117,13 +117,17 @@ class AgentSocketClient:
             if command_type == 'UPDATE_AGENT':
                 from agent.core.commands.update_agent import handle_update_agent
 
-                async def emit_progress(stage: str, percent: int, message: str) -> None:
-                    await self.sio.emit('update_progress', {
+                async def emit_progress(stage: str, percent: int, message: str, **extra: object) -> None:
+                    payload: dict[str, object] = {
                         'mac_address': self._mac(),
                         'stage': stage,
                         'percent': percent,
                         'message': message,
-                    })
+                    }
+                    for k, v in extra.items():
+                        if v is not None:
+                            payload[k] = v
+                    await self.sio.emit('update_progress', payload)
 
                 asyncio.create_task(handle_update_agent(payload, emit_progress, self.token))
                 return  # do NOT emit command_result; agent will exit after apply
