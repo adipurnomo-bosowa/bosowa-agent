@@ -4,6 +4,8 @@ from __future__ import annotations
 import io
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 def test_download_with_progress_reports_percent():
     """progress_cb dipanggil dengan persentase yang meningkat."""
@@ -79,3 +81,42 @@ def test_is_newer_version():
     assert is_newer_version('1.0.1', '1.0.1') is False
     assert is_newer_version('1.0.0', '1.0.1') is False
     assert is_newer_version('2.0.0', '1.9.9') is True
+
+
+@pytest.mark.asyncio
+async def test_handle_update_agent_already_latest():
+    """Jika versi sudah terkini, emit done langsung."""
+    progress_calls = []
+
+    async def emit_progress(stage, percent, message):
+        progress_calls.append({'stage': stage, 'percent': percent})
+
+    with patch('agent.core.auto_update.fetch_latest_version', return_value={'version': '1.0.1', 'download_url': 'http://x/a.exe'}), \
+         patch('agent.core.auto_update.is_newer_version', return_value=False), \
+         patch('agent.config.AGENT_VERSION', '1.0.1'):
+        from agent.core.commands.update_agent import handle_update_agent
+        await handle_update_agent({}, emit_progress, 'tok')
+
+    stages = [c['stage'] for c in progress_calls]
+    assert 'checking' in stages
+    assert 'done' in stages
+    assert 'error' not in stages
+
+
+@pytest.mark.asyncio
+async def test_handle_update_agent_download_fail():
+    """Jika download gagal, emit error."""
+    progress_calls = []
+
+    async def emit_progress(stage, percent, message):
+        progress_calls.append({'stage': stage})
+
+    with patch('agent.core.auto_update.fetch_latest_version', return_value={'version': '1.0.2', 'download_url': 'http://x/a.exe'}), \
+         patch('agent.core.auto_update.is_newer_version', return_value=True), \
+         patch('agent.core.auto_update.download_update_with_progress', return_value=None), \
+         patch('agent.config.AGENT_VERSION', '1.0.1'):
+        from agent.core.commands.update_agent import handle_update_agent
+        await handle_update_agent({}, emit_progress, 'tok')
+
+    stages = [c['stage'] for c in progress_calls]
+    assert 'error' in stages
