@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import psutil
 
 from agent import config
-from agent.core.geo import fetch_ip_location, get_cached_location
+from agent.core.geo import fetch_location, get_cached_location
 from agent.core.socket_client import AgentSocketClient
 from agent.core.software_compliance import get_installed_programs
 from agent.utils.logger import logger
@@ -44,7 +44,7 @@ async def heartbeat_loop(socket_client: AgentSocketClient, token: str) -> None:
             # Refresh IP geolocation at most every 10 minutes; otherwise reuse cache
             location = get_cached_location()
             if location is None or (now_ts - last_geo_refresh) >= 600:
-                fresh = await asyncio.to_thread(fetch_ip_location)
+                fresh = await asyncio.to_thread(fetch_location)
                 if fresh:
                     location = fresh
                 last_geo_refresh = now_ts

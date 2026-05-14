@@ -72,10 +72,10 @@ class AgentSocketClient:
             # Reuse cached IP geolocation (refreshed by heartbeat loop).
             location = None
             try:
-                from agent.core.geo import get_cached_location, fetch_ip_location
+                from agent.core.geo import get_cached_location, fetch_location
                 location = get_cached_location()
                 if location is None:
-                    location = await asyncio.to_thread(fetch_ip_location)
+                    location = await asyncio.to_thread(fetch_location)
             except Exception as e:
                 logger.debug('Geo fetch on socket connect failed: %s', e)
 

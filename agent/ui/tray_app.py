@@ -939,36 +939,57 @@ class AgentTrayApp:
                 back_btn.setVisible(row != 0)
                 if nav_titles[row] == 'Tickets':
                     load_tickets()
+                elif nav_titles[row] == 'Device Health Check':
+                    refresh_summary()
 
         def load_tickets() -> None:
-            try:
-                tickets = list_my_tickets()
-                ticket_data_desktop.clear()
-                ticket_data_desktop.extend(tickets)
-                ticket_table.setRowCount(len(tickets))
-                for i, t in enumerate(tickets):
-                    created = t.get('createdAt')
-                    try:
-                        created_fmt = datetime.fromisoformat(str(created).replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
-                    except Exception:
-                        created_fmt = str(created or '-')
-                    values = [
-                        str(t.get('status', '-')),
-                        str(t.get('priority', '-')),
-                        str(t.get('category', '-')),
-                        str(t.get('title', '-')),
-                        created_fmt,
-                    ]
-                    for col, val in enumerate(values):
-                        item = QtWidgets.QTableWidgetItem(val)
-                        if t.get('adminNote'):
-                            item.setForeground(QtGui.QColor('#64B5F6'))
-                        else:
-                            item.setForeground(QtGui.QColor('#CBD5E1'))
-                        ticket_table.setItem(i, col, item)
-            except Exception as e:
-                logger.warning('Load desktop tickets failed: %s', e)
-                QtWidgets.QMessageBox.warning(dlg, 'Tickets', str(e))
+            ticket_table.setRowCount(0)
+            loading_item = QtWidgets.QTableWidgetItem('Memuat tiket...')
+            loading_item.setForeground(QtGui.QColor('#94A3B8'))
+            ticket_table.setRowCount(1)
+            ticket_table.setItem(0, 0, loading_item)
+
+            def _bg():
+                try:
+                    tickets = list_my_tickets()
+                except Exception as e:
+                    logger.warning('Load desktop tickets failed: %s', e)
+                    def _err():
+                        ticket_table.setRowCount(1)
+                        err_item = QtWidgets.QTableWidgetItem(str(e))
+                        err_item.setForeground(QtGui.QColor('#EF4444'))
+                        ticket_table.setItem(0, 0, err_item)
+                    QtCore.QTimer.singleShot(0, _err)
+                    return
+
+                def _populate():
+                    ticket_data_desktop.clear()
+                    ticket_data_desktop.extend(tickets)
+                    ticket_table.setRowCount(len(tickets))
+                    for i, t in enumerate(tickets):
+                        created = t.get('createdAt')
+                        try:
+                            created_fmt = datetime.fromisoformat(str(created).replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
+                        except Exception:
+                            created_fmt = str(created or '-')
+                        values = [
+                            str(t.get('status', '-')),
+                            str(t.get('priority', '-')),
+                            str(t.get('category', '-')),
+                            str(t.get('title', '-')),
+                            created_fmt,
+                        ]
+                        for col, val in enumerate(values):
+                            item = QtWidgets.QTableWidgetItem(val)
+                            if t.get('adminNote'):
+                                item.setForeground(QtGui.QColor('#64B5F6'))
+                            else:
+                                item.setForeground(QtGui.QColor('#CBD5E1'))
+                            ticket_table.setItem(i, col, item)
+
+                QtCore.QTimer.singleShot(0, _populate)
+
+            threading.Thread(target=_bg, daemon=True).start()
 
         def go_to_tickets() -> None:
             tickets_index = nav_titles.index('Tickets')

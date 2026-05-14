@@ -157,8 +157,8 @@ def get_hardware_snapshot() -> dict:
     # Best-effort IP geolocation — keeps the dashboard map populated even if the
     # WebSocket register/heartbeat path drops the location field.
     try:
-        from agent.core.geo import fetch_ip_location  # local import avoids cycles
-        location = fetch_ip_location()
+        from agent.core.geo import fetch_location  # local import avoids cycles
+        location = fetch_location()
     except Exception as e:
         logger.warning("Geo fetch failed during hardware snapshot: %s", e)
         location = None
