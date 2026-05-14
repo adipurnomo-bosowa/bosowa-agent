@@ -33,6 +33,7 @@ from agent.overlay.lockscreen import LockScreenOverlay, OverlayConfig
 from agent.ui.tray_app import AgentTrayApp
 from agent.utils.logger import logger, setup_logger
 from agent.utils.startup import register_all, is_registered, add_defender_exclusions
+from agent.auth.token_store import store_device_token, store_refresh_token, store_user_session
 
 _tray: AgentTrayApp | None = None
 _service_loop: asyncio.AbstractEventLoop | None = None
@@ -200,6 +201,8 @@ def _run_auth_flow() -> None:
         store_device_token(token)
         if refresh:
             store_refresh_token(refresh)
+        if user:
+            store_user_session(user)
     elif token == '_pin_auth_':
         from agent.auth.token_store import get_device_token as _get_stored_device_token
 

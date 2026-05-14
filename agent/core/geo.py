@@ -16,6 +16,40 @@ from agent.utils.logger import logger
 
 _cache: dict = {'data': None, 'fetched_at': 0.0}
 _CACHE_TTL_SEC = 600  # 10 minutes
+_location_enabled_once = False  # ensure we only run the registry fix once per process
+
+
+def ensure_location_services_enabled() -> None:
+    """Enable Windows Location Services via registry if not already on.
+
+    Sets the system-wide consent store to Allow so GeoCoordinateWatcher
+    can get a fix without requiring manual user action in Settings.
+    Only runs once per agent process (idempotent registry write).
+    """
+    global _location_enabled_once
+    if _location_enabled_once or sys.platform != 'win32':
+        return
+    _location_enabled_once = True
+    ps = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+# System-wide consent store (requires admin)
+$consentPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location'
+if (Test-Path $consentPath) {
+    Set-ItemProperty -Path $consentPath -Name Value -Value Allow -Type String -Force
+}
+# Remove GP disable-location flag if present
+$gpPath = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors'
+if (Test-Path $gpPath) {
+    Remove-ItemProperty -Path $gpPath -Name DisableLocation -Force -ErrorAction SilentlyContinue
+}
+"""
+    try:
+        subprocess.run(
+            ['powershell', '-NonInteractive', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps],
+            capture_output=True, timeout=10,
+        )
+    except Exception as e:
+        logger.debug('Location services enable failed: %s', e)
 
 
 # PowerShell script that uses System.Device.Location.GeoCoordinateWatcher.
@@ -44,6 +78,7 @@ def fetch_windows_location() -> dict | None:
     """Return location from Windows Location Services or None if unavailable."""
     if sys.platform != 'win32':
         return None
+    ensure_location_services_enabled()
     try:
         result = subprocess.run(
             ['powershell', '-NonInteractive', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', _PS_GEO_SCRIPT],
