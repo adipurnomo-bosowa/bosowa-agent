@@ -79,6 +79,8 @@ class AgentSocketClient:
             await self.sio.emit('register_device', payload)
             # Flush queued heartbeats
             await self._flush_queue()
+            # Sync PIN from server (handles case where PIN was set while device was offline)
+            await self._sync_pin_from_server()
 
         @sio.event
         async def connect_error(data):
@@ -102,6 +104,21 @@ class AgentSocketClient:
             payload = data.get('payload', {})
             command_id = data.get('command_id', 'unknown')
             logger.info('Received command: %s (id=%s)', command_type, command_id)
+
+            if command_type == 'UPDATE_AGENT':
+                from agent.core.commands.update_agent import handle_update_agent
+
+                async def emit_progress(stage: str, percent: int, message: str) -> None:
+                    await self.sio.emit('update_progress', {
+                        'mac_address': self._mac(),
+                        'stage': stage,
+                        'percent': percent,
+                        'message': message,
+                    })
+
+                asyncio.create_task(handle_update_agent(payload, emit_progress, self.token))
+                return  # do NOT emit command_result; agent will exit after apply
+
             result = await dispatch_command(command_type, payload, command_id)
             await self._emit_command_result({
                 'command_id': command_id,
@@ -160,6 +177,33 @@ class AgentSocketClient:
                 logger.warning('force_lock: clear creds failed: %s', e)
             import os
             os._exit(0)
+
+    async def _sync_pin_from_server(self) -> None:
+        """Fetch PIN hash from server and persist locally. Handles offline-while-PIN-set case."""
+        try:
+            mac = self._mac()
+            token = self.token
+
+            def _fetch() -> dict | None:
+                import requests
+                resp = requests.get(
+                    f'{config.API_BASE}/auth/agent-pin',
+                    params={'device_mac': mac},
+                    headers={'Authorization': f'Bearer {token}'},
+                    timeout=10,
+                )
+                return resp.json() if resp.status_code == 200 else None
+
+            data = await asyncio.to_thread(_fetch)
+            if data and data.get('pin_hash') and data.get('valid_until'):
+                from agent.auth.token_store import store_pin_hash
+                from datetime import datetime, timezone as _tz
+                pin_hash_bytes = data['pin_hash'].encode('latin-1')
+                valid_until = datetime.fromisoformat(data['valid_until']).replace(tzinfo=_tz.utc)
+                store_pin_hash(pin_hash_bytes, valid_until)
+                logger.info('PIN synced from server on connect (valid until %s)', valid_until)
+        except Exception as e:
+            logger.debug('PIN sync on connect failed: %s', e)
 
     # ------------------------------------------------------------------
     # Connect / disconnect
