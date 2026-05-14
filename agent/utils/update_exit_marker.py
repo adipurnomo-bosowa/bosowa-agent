@@ -11,17 +11,20 @@ import sys
 import time
 
 from agent import config
+from agent.utils.logger import logger
 
 MARKER = config.AGENT_DIR / '.update_replace_pending'
 MUTEX_NAME = 'BosowAgent_SingleInstance'
+# Enough rights to open the mutex created by the main process (default DACL).
+MUTEX_ALL_ACCESS = 0x1F0001
 
 
 def write_update_replace_marker() -> None:
     try:
         config.AGENT_DIR.mkdir(parents=True, exist_ok=True)
         MARKER.write_text(str(time.time()), encoding='utf-8')
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning('update marker write failed (watchdog may relaunch during replace): %s', e)
 
 
 def clear_update_replace_marker() -> None:
@@ -46,9 +49,8 @@ def another_agent_mutex_exists() -> bool:
     if sys.platform != 'win32':
         return False
     try:
-        SYNCHRONIZE = 0x00100000
-        h = ctypes.windll.kernel32.OpenMutexW(SYNCHRONIZE, False, MUTEX_NAME)
-        if h:
+        h = ctypes.windll.kernel32.OpenMutexW(MUTEX_ALL_ACCESS, False, MUTEX_NAME)
+        if h and int(h) != 0:
             ctypes.windll.kernel32.CloseHandle(h)
             return True
     except Exception:

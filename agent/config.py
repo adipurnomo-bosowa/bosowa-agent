@@ -128,6 +128,16 @@ DEV_MODE = os.environ.get('BOSOWA_DEV', '0') == '1'
 LOG_LEVEL = 'DEBUG' if DEV_MODE else 'INFO'
 AGENT_VERSION = '1.0.6'
 
+# Background silent download/replace from /api/agent/version (off by default).
+# Can fight the watchdog if replace fails or server version never matches the
+# embedded binary; use portal "Update Agent" instead. Opt-in: BOSOWA_AGENT_SILENT_UPDATE=1
+SILENT_AGENT_UPDATE = os.environ.get('BOSOWA_AGENT_SILENT_UPDATE', '').lower() in (
+    '1',
+    'true',
+    'yes',
+    'on',
+)
+
 # ---------------------------------------------------------------------------
 # PyQt5 / overlay
 # ---------------------------------------------------------------------------
@@ -159,6 +169,7 @@ __all__ = [
     'DEV_MODE',
     'LOG_LEVEL',
     'AGENT_VERSION',
+    'SILENT_AGENT_UPDATE',
     'OVERLAY_LOCK_COLOR',
     'OVERLAY_ACCENT',
     'OVERLAY_SUCCESS',

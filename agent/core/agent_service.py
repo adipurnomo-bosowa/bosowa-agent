@@ -96,7 +96,13 @@ class AgentService:
         self._tasks.append(asyncio.create_task(self._audit_flush_loop()))
         self._tasks.append(asyncio.create_task(self._focus_sample_loop()))
         self._tasks.append(asyncio.create_task(self._hardware_refresh_loop()))
-        self._tasks.append(asyncio.create_task(self._version_check_loop()))
+        if config.SILENT_AGENT_UPDATE:
+            self._tasks.append(asyncio.create_task(self._version_check_loop()))
+        else:
+            logger.info(
+                'Background silent auto-update is disabled; use portal UPDATE_AGENT or set '
+                'BOSOWA_AGENT_SILENT_UPDATE=1 to enable the 6-hour version poll.'
+            )
 
     # ------------------------------------------------------------------
     # Token refresh loop

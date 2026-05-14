@@ -26,7 +26,7 @@ RESTART_WINDOW_SECS = 300  # reset counter after 5 min stable run
 # After main exits for self-update, PowerShell may need several seconds to copy the
 # exe and start the replacement. Wait for the single-instance mutex before relaunching.
 UPDATE_WAIT_POLL_SECS = 5
-UPDATE_WAIT_MAX_SECS = 120
+UPDATE_WAIT_MAX_SECS = 180
 
 
 def _is_pid_running(pid: int) -> bool:
