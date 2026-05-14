@@ -45,6 +45,7 @@ async def handle_update_agent(
     loop = asyncio.get_running_loop()
 
     def progress_cb(pct: int) -> None:
+        # Fire-and-forget: progress events are non-fatal if they fail
         asyncio.run_coroutine_threadsafe(
             emit_progress('downloading', pct, f'Mengunduh... {pct}%'),
             loop,
@@ -58,7 +59,7 @@ async def handle_update_agent(
         await emit_progress('error', 0, 'Download gagal. Periksa koneksi dan URL di server.')
         return
 
-    await emit_progress('replacing', 95, 'Mengganti file agent...')
+    await emit_progress('replacing', 100, 'Mengganti file agent...')
     apply_update_and_relaunch(new_exe)
 
     # Sampai sini hanya jika dev mode (tidak frozen)
