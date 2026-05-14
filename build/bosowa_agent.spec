@@ -7,8 +7,8 @@ from pathlib import Path
 
 block_cipher = None
 
-# Absolute path to agent source (works both in dev and frozen)
-ROOT = Path(r'C:\Users\adipu\Documents\WebApp\portal_bosowa\bosowa-agent').absolute()
+# Portable: SPECPATH is injected by PyInstaller = directory of this spec file (build/)
+ROOT = Path(SPECPATH).parent
 AGENT_SRC = ROOT / 'agent'
 sys.path.insert(0, str(AGENT_SRC))
 
@@ -18,7 +18,7 @@ a = Analysis(
     binaries=[],
     datas=[
         # Bundle lockscreen branding assets
-        (str(ROOT.parent / 'PORTAL.png'), 'assets'),
+        (str(ROOT / 'assets' / 'PORTAL.png'), 'assets'),
         # Software whitelist CSV
         (str(ROOT / 'config' / 'whitelist.csv'), 'config'),
     ],
