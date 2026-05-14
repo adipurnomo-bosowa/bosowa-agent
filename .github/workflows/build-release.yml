@@ -122,7 +122,7 @@ jobs:
               && sed -i "s|^AGENT_DOWNLOAD_URL=.*|AGENT_DOWNLOAD_URL=$DOWNLOAD_URL|" "$ENV_FILE" \
               || echo "AGENT_DOWNLOAD_URL=$DOWNLOAD_URL" >> "$ENV_FILE"
             mkdir -p /var/www/downloads
-            pm2 restart bosowa-portal
+            pm2 restart bosowa-portal --update-env
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

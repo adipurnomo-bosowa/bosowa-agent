@@ -126,7 +126,7 @@ PIN_SETUP_TIMEOUT = 10      # seconds for server request in PIN setup
 # ---------------------------------------------------------------------------
 DEV_MODE = os.environ.get('BOSOWA_DEV', '0') == '1'
 LOG_LEVEL = 'DEBUG' if DEV_MODE else 'INFO'
-AGENT_VERSION = '1.0.6'
+AGENT_VERSION = '1.1.0'
 
 # Background silent download/replace from /api/agent/version (off by default).
 # Can fight the watchdog if replace fails or server version never matches the
