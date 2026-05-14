@@ -42,27 +42,7 @@ def fetch_latest_version(token: str) -> Optional[dict]:
 
 def download_update(download_url: str, token: str) -> Optional[Path]:
     """Download exe baru ke AGENT_DIR/update/. Return path, None jika gagal."""
-    update_dir = config.AGENT_DIR / 'update'
-    update_dir.mkdir(parents=True, exist_ok=True)
-    target = update_dir / 'BosowAgent_new.exe'
-
-    try:
-        r = requests.get(
-            download_url,
-            headers={'Authorization': f'Bearer {token}'},
-            stream=True,
-            timeout=120,
-            verify=certifi.where(),
-        )
-        r.raise_for_status()
-        with open(target, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                f.write(chunk)
-        logger.info('Update downloaded to %s (%d bytes)', target, target.stat().st_size)
-        return target
-    except Exception as e:
-        logger.warning('download_update failed: %s', e)
-        return None
+    return download_update_with_progress(download_url, token, lambda _: None)
 
 
 def download_update_with_progress(
