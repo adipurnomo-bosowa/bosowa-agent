@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import certifi
 import requests
@@ -62,6 +62,47 @@ def download_update(download_url: str, token: str) -> Optional[Path]:
         return target
     except Exception as e:
         logger.warning('download_update failed: %s', e)
+        return None
+
+
+def download_update_with_progress(
+    download_url: str,
+    token: str,
+    progress_cb: Callable[[int], None],
+) -> Optional[Path]:
+    """Download exe baru dengan laporan progress setiap ~5%. Return path, None jika gagal."""
+    update_dir = config.AGENT_DIR / 'update'
+    update_dir.mkdir(parents=True, exist_ok=True)
+    target = update_dir / 'BosowAgent_new.exe'
+
+    try:
+        r = requests.get(
+            download_url,
+            headers={'Authorization': f'Bearer {token}'},
+            stream=True,
+            timeout=120,
+            verify=certifi.where(),
+        )
+        r.raise_for_status()
+        total = int(r.headers.get('Content-Length', 0))
+        downloaded = 0
+        last_reported = -1
+
+        with open(target, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total > 0:
+                    pct = min(99, int(downloaded * 100 / total))
+                    if pct >= last_reported + 5:
+                        progress_cb(pct)
+                        last_reported = pct
+
+        progress_cb(100)
+        logger.info('Update downloaded to %s (%d bytes)', target, target.stat().st_size)
+        return target
+    except Exception as e:
+        logger.warning('download_update_with_progress failed: %s', e)
         return None
 
 
