@@ -1,0 +1,86 @@
+name: Build and Release BosowAgent
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.5.0
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Patch AGENT_VERSION in config.py
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.VERSION }}"
+          $c = Get-Content agent/config.py -Raw
+          $c = $c -replace "AGENT_VERSION = '[^']*'", "AGENT_VERSION = '$v'"
+          Set-Content agent/config.py $c -Encoding UTF8
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller build/bosowa_agent.spec --distpath build/dist --workpath build/work --noconfirm
+
+      - name: Verify build output
+        shell: bash
+        run: |
+          test -f build/dist/BosowAgent.exe
+          echo "Build OK: $(wc -c < build/dist/BosowAgent.exe) bytes"
+
+      - name: Deploy exe to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: build/dist/BosowAgent.exe
+          target: /var/www/downloads/
+          strip_components: 2
+
+      - name: Update VPS env and restart portal
+        uses: appleboy/ssh-action@v1
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          DOWNLOAD_URL: https://${{ secrets.VPS_HOST }}/downloads/BosowAgent.exe
+          ENV_FILE: ${{ secrets.VPS_ENV_FILE }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: VERSION,DOWNLOAD_URL,ENV_FILE
+          script: |
+            grep -q "^AGENT_LATEST_VERSION=" "$ENV_FILE" \
+              && sed -i "s/^AGENT_LATEST_VERSION=.*/AGENT_LATEST_VERSION=$VERSION/" "$ENV_FILE" \
+              || echo "AGENT_LATEST_VERSION=$VERSION" >> "$ENV_FILE"
+            grep -q "^AGENT_DOWNLOAD_URL=" "$ENV_FILE" \
+              && sed -i "s|^AGENT_DOWNLOAD_URL=.*|AGENT_DOWNLOAD_URL=$DOWNLOAD_URL|" "$ENV_FILE" \
+              || echo "AGENT_DOWNLOAD_URL=$DOWNLOAD_URL" >> "$ENV_FILE"
+            pm2 restart bosowa-portal
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/dist/BosowAgent.exe
+          generate_release_notes: true
