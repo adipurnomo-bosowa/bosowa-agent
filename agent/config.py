@@ -126,7 +126,7 @@ PIN_SETUP_TIMEOUT = 10      # seconds for server request in PIN setup
 # ---------------------------------------------------------------------------
 DEV_MODE = os.environ.get('BOSOWA_DEV', '0') == '1'
 LOG_LEVEL = 'DEBUG' if DEV_MODE else 'INFO'
-AGENT_VERSION = '1.0.3'
+AGENT_VERSION = '1.0.6'
 
 # ---------------------------------------------------------------------------
 # PyQt5 / overlay
