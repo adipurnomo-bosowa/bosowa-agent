@@ -79,6 +79,8 @@ a = Analysis(
         'agent.core.commands.software',
         'agent.core.commands.hardware_info',
         'agent.core.commands.website_control',
+        'agent.core.commands.update_agent',
+        'agent.core.commands.software_install',
         # Tray + ticketing
         'agent.ui',
         'agent.ui.tray_app',
