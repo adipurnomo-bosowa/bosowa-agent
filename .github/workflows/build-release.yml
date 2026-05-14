@@ -83,7 +83,7 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           VERSION: ${{ needs.build.outputs.version }}
-          DOWNLOAD_URL: https://${{ secrets.VPS_HOST }}/downloads/BosowAgent.exe
+          DOWNLOAD_URL: https://portal.bosowa.co.id/downloads/BosowAgent.exe
           ENV_FILE: ${{ secrets.VPS_ENV_FILE }}
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -97,6 +97,7 @@ jobs:
             grep -q "^AGENT_DOWNLOAD_URL=" "$ENV_FILE" \
               && sed -i "s|^AGENT_DOWNLOAD_URL=.*|AGENT_DOWNLOAD_URL=$DOWNLOAD_URL|" "$ENV_FILE" \
               || echo "AGENT_DOWNLOAD_URL=$DOWNLOAD_URL" >> "$ENV_FILE"
+            mkdir -p /var/www/downloads
             pm2 restart bosowa-portal
 
       - name: Create GitHub Release
