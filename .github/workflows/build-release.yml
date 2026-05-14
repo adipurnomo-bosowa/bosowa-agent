@@ -9,8 +9,10 @@ permissions:
   contents: write
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
 
     steps:
       - name: Checkout
@@ -49,20 +51,38 @@ jobs:
           test -f build/dist/BosowAgent.exe
           echo "Build OK: $(wc -c < build/dist/BosowAgent.exe) bytes"
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BosowAgent-exe
+          path: build/dist/BosowAgent.exe
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: BosowAgent-exe
+          path: ./dist
+
       - name: Deploy exe to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          source: build/dist/BosowAgent.exe
+          source: dist/BosowAgent.exe
           target: /var/www/downloads/
-          strip_components: 2
+          strip_components: 1
 
       - name: Update VPS env and restart portal
         uses: appleboy/ssh-action@v1
         env:
-          VERSION: ${{ steps.version.outputs.VERSION }}
+          VERSION: ${{ needs.build.outputs.version }}
           DOWNLOAD_URL: https://${{ secrets.VPS_HOST }}/downloads/BosowAgent.exe
           ENV_FILE: ${{ secrets.VPS_ENV_FILE }}
         with:
@@ -82,5 +102,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/dist/BosowAgent.exe
+          files: dist/BosowAgent.exe
           generate_release_notes: true
