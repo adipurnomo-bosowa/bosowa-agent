@@ -15,12 +15,24 @@ from agent.utils.logger import logger
 
 
 def is_newer_version(server_version: str, current_version: str) -> bool:
-    """Return True jika server_version > current_version (format major.minor.patch)."""
-    def parse(v: str) -> tuple[int, ...]:
-        try:
-            return tuple(int(x) for x in v.strip().split('.')[:3])
-        except ValueError:
-            return (0, 0, 0)
+    """Return True jika server_version > current_version (format major.minor.patch; prefix v/V diabaikan)."""
+    def parse(v: str) -> tuple[int, int, int]:
+        s = (v or '').strip().lstrip('vV')
+        parts = (s.split('.') + ['0', '0', '0'])[:3]
+        out: list[int] = []
+        for p in parts:
+            num = ''
+            for ch in p:
+                if ch.isdigit():
+                    num += ch
+                else:
+                    break
+            try:
+                out.append(int(num) if num else 0)
+            except ValueError:
+                out.append(0)
+        return (out[0], out[1], out[2])
+
     return parse(server_version) > parse(current_version)
 
 

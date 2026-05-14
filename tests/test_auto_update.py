@@ -22,6 +22,17 @@ def test_is_newer_version_major():
     assert is_newer_version('2.0.0', '1.9.9') is True
 
 
+def test_is_newer_version_server_with_v_prefix():
+    from agent.core.auto_update import is_newer_version
+    assert is_newer_version('v1.0.6', '1.0.5') is True
+    assert is_newer_version('V1.0.6', '1.0.5') is True
+
+
+def test_is_newer_version_current_with_v_prefix():
+    from agent.core.auto_update import is_newer_version
+    assert is_newer_version('1.0.6', 'v1.0.5') is True
+
+
 def test_fetch_latest_version_success():
     import requests
     mock_resp = MagicMock()
