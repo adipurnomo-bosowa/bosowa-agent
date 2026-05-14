@@ -403,6 +403,32 @@ class AgentTrayApp:
             return {'name': 'Windows Password', 'status': 'WARN',
                     'detail': f'Gagal cek: {e}'}
 
+    def _schedule_dashboard_ticket_count(self) -> None:
+        """Refresh the dashboard 'Tiket Aktif' metric (background thread + UI thread hop)."""
+        def _fetch() -> None:
+            try:
+                tickets = list_my_tickets()
+                active = [t for t in tickets if t.get('status') in ('OPEN', 'IN_PROGRESS')]
+                count = len(active)
+            except Exception:
+                count = 0
+
+            def _ui() -> None:
+                tv = getattr(self, 'ticket_card_val', None)
+                ts = getattr(self, 'ticket_card_status', None)
+                if tv is None or ts is None:
+                    return
+                try:
+                    tv.setText(str(count))
+                    ts.setText('AKTIF')
+                    ts.setStyleSheet('color: #60A5FA; font-size: 11px; font-weight: 600;')
+                except RuntimeError:
+                    pass
+
+            QtCore.QTimer.singleShot(0, _ui)
+
+        threading.Thread(target=_fetch, daemon=True).start()
+
     def _show_desktop_app(self) -> None:
         dlg = QtWidgets.QDialog()
         dlg.setWindowTitle('Bosowa Portal Desktop')
@@ -864,23 +890,7 @@ class AgentTrayApp:
             _update_metric_card(self.hdd_card_val, self.hdd_card_status,
                                  f'{hdd_val:.0f}%', hdd_val, (75, 90))
 
-            # Fetch ticket count in background
-            def _fetch_ticket_count():
-                try:
-                    tickets = list_my_tickets()
-                    active = [t for t in tickets if t.get('status') in ('OPEN', 'IN_PROGRESS')]
-                    count = len(active)
-                except Exception:
-                    count = 0
-
-                def _ui():
-                    self.ticket_card_val.setText(str(count))
-                    self.ticket_card_status.setText('AKTIF')
-                    self.ticket_card_status.setStyleSheet('color: #60A5FA; font-size: 11px; font-weight: 600;')
-
-                QtCore.QTimer.singleShot(0, _ui)
-
-            threading.Thread(target=_fetch_ticket_count, daemon=True).start()
+            self._schedule_dashboard_ticket_count()
 
             def _run_health_checks_bg() -> None:
                 checks = self._collect_health_checks()
@@ -1020,6 +1030,12 @@ class AgentTrayApp:
         timer.timeout.connect(refresh_summary)
         timer.start()
 
+        ticket_metric_timer = QtCore.QTimer(dlg)
+        ticket_metric_timer.setInterval(120_000)
+        ticket_metric_timer.timeout.connect(self._schedule_dashboard_ticket_count)
+        ticket_metric_timer.start()
+
+        self._schedule_dashboard_ticket_count()
         refresh_summary()
         load_tickets()
         dlg.exec_()

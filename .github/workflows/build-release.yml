@@ -1,9 +1,26 @@
+# Build & deploy BosowAgent.exe — triggered by VERSION TAG PUSH only (not by `git push` to a branch).
+#
+# How to release v1.0.7:
+#   1. Commit and push your code:  git push origin main
+#   2. Create an annotated tag (recommended):  git tag -a v1.0.7 -m "release 1.0.7"
+#      Or lightweight:  git tag v1.0.7
+#   3. Push the tag to GitHub:  git push origin v1.0.7
+# Tag must match pattern v* (e.g. v1.0.7). Not "v.1.0.7" with an extra dot after v.
+#
+# Manual test run (Actions tab → "Run workflow"): workflow_dispatch with version 1.0.99
+#
 name: Build and Release BosowAgent
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semver tanpa prefix v (contoh: 1.0.8) — untuk uji build manual'
+        required: true
+        default: '1.0.0'
 
 permissions:
   contents: write
@@ -29,10 +46,15 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.5.0
 
-      - name: Extract version from tag
+      - name: Extract version from tag or workflow input
         id: version
         shell: bash
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Patch AGENT_VERSION in config.py
         shell: pwsh
@@ -40,7 +62,8 @@ jobs:
           $v = "${{ steps.version.outputs.VERSION }}"
           $c = Get-Content agent/config.py -Raw
           $c = $c -replace "AGENT_VERSION = '[^']*'", "AGENT_VERSION = '$v'"
-          Set-Content agent/config.py $c -Encoding UTF8
+          $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText("$pwd/agent/config.py", $c, $utf8NoBom)
 
       - name: Build with PyInstaller
         run: python -m PyInstaller build/bosowa_agent.spec --distpath build/dist --workpath build/work --noconfirm
@@ -61,6 +84,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' }}
 
     steps:
       - name: Download artifact

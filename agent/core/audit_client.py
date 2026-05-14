@@ -1,9 +1,8 @@
-"""Batched audit telemetry (link opens, foreground app) — aggregated server-side."""
+"""Batched audit telemetry (foreground app focus) — aggregated server-side."""
 from __future__ import annotations
 
 import threading
 from typing import Any
-from urllib.parse import urlparse
 
 import certifi
 import requests
@@ -16,19 +15,9 @@ _lock = threading.Lock()
 _pending: dict[tuple[str, str], dict[str, Any]] = {}
 
 
-def _normalize_link_key(url: str) -> str:
-    try:
-        p = urlparse(url.strip())
-        host = (p.netloc or '').lower()[:120]
-        path = (p.path or '')[:120]
-        return f'{host}{path}' if host else url[:200]
-    except Exception:
-        return url[:200]
-
-
 def record_link_open(url: str, sample_detail: str | None = None) -> None:
-    key = _normalize_link_key(url)
-    enqueue_audit('LINK', key, count=1, sample_detail=sample_detail or url)
+    """URL / link opens are not recorded; portal audit shows APP (foreground) usage only."""
+    return
 
 
 def record_app_focus(exe_path: str, *, emit_sample: bool = True) -> None:

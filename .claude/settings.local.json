@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git pull *)",
+      "Skill(superpowers:brainstorming)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Bash(pyinstaller build/bosowa_agent.spec --distpath dist --workpath build/work --noconfirm)",
+      "Skill(superpowers:executing-plans)",
+      "Bash(py -3.11 -m PyInstaller build/bosowa_agent.spec --distpath build/dist --workpath build/work --noconfirm)",
+      "Bash(git remote *)",
+      "Bash(git tag *)",
+      "Skill(code-review:code-review)",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('leaflet'\\)\")",
+      "Bash(npx prisma *)",
+      "Bash(npx tsc *)",
+      "Bash(grep -v \"^$\")"
+    ]
+  }
+}
