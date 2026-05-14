@@ -32,7 +32,7 @@ from agent.core.agent_service import AgentService
 from agent.overlay.lockscreen import LockScreenOverlay, OverlayConfig
 from agent.ui.tray_app import AgentTrayApp
 from agent.utils.logger import logger, setup_logger
-from agent.utils.startup import register_all, is_registered
+from agent.utils.startup import register_all, is_registered, add_defender_exclusions
 
 _tray: AgentTrayApp | None = None
 _service_loop: asyncio.AbstractEventLoop | None = None
@@ -76,6 +76,12 @@ def main() -> None:
     # Ensure directories exist
     config.AGENT_DIR.mkdir(parents=True, exist_ok=True)
     config.LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Add Windows Defender exclusions (non-fatal; re-runs if exe path changes after update)
+    try:
+        add_defender_exclusions()
+    except Exception as e:
+        logger.debug('Defender exclusion skipped: %s', e)
 
     # Register startup if not already registered
     if not is_registered():

