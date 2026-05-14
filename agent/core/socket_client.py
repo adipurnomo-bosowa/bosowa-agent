@@ -66,10 +66,7 @@ class AgentSocketClient:
             logger.info('Socket.IO connected to %s', self.server_url)
             self._connected = True
             self._connect_done.set()
-            # Join the default namespace
-            await self.sio.emit('join_dashboard')
 
-            # Reuse cached IP geolocation (refreshed by heartbeat loop).
             location = None
             try:
                 from agent.core.geo import get_cached_location, fetch_location

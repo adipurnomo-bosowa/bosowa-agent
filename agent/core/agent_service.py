@@ -11,7 +11,6 @@ import requests
 from agent import config
 from agent.auth.login import AuthTokens, check_and_refresh_token
 from agent.auth.token_store import (
-    store_device_token,
     store_refresh_token,
     get_device_token,
     get_refresh_token,
@@ -90,10 +89,7 @@ class AgentService:
                     await asyncio.sleep(15)
 
         self._tasks.append(asyncio.create_task(_wait_socket()))
-        self._tasks.append(asyncio.create_task(heartbeat_loop(
-            self._socket,
-            self.tokens.token,
-        )))
+        self._tasks.append(asyncio.create_task(heartbeat_loop(self._socket)))
 
     async def _start_background_tasks(self) -> None:
         self._tasks.append(asyncio.create_task(self._token_refresh_loop()))

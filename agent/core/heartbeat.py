@@ -14,7 +14,7 @@ from agent.core.software_compliance import get_installed_programs
 from agent.utils.logger import logger
 
 
-async def heartbeat_loop(socket_client: AgentSocketClient, token: str) -> None:
+async def heartbeat_loop(socket_client: AgentSocketClient) -> None:
     """Periodically emit heartbeat events via Socket.IO."""
     static_ctx = _get_static_context()
     last_geo_refresh = 0.0
@@ -30,7 +30,7 @@ async def heartbeat_loop(socket_client: AgentSocketClient, token: str) -> None:
                 last_sw_refresh = now_mono
             vm = psutil.virtual_memory()
             payload = {
-                'token': token,
+                'token': socket_client.token,
                 'mac_address': static_ctx['mac_address'],
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'cpu_percent': psutil.cpu_percent(interval=None),

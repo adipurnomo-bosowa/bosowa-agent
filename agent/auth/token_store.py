@@ -78,6 +78,24 @@ def store_device_token(token: str, expires_at: datetime | None = None) -> None:
         logger.error('Failed to store device_token in keyring: %s', e)
 
 
+def store_device_token_from_jwt(token: str) -> None:
+    """Persist device JWT and expiry from the `exp` claim (drives refresh + auto-login)."""
+    import base64
+    import json as _json
+    from datetime import datetime, timezone
+    try:
+        payload_b64 = token.split('.')[1]
+        payload_b64 += '=' * (4 - len(payload_b64) % 4)
+        payload = _json.loads(base64.b64decode(payload_b64))
+        exp = payload.get('exp')
+        if exp:
+            store_device_token(token, datetime.fromtimestamp(int(exp), tz=timezone.utc))
+            return
+    except Exception as e:
+        logger.debug('store_device_token_from_jwt: no exp in token: %s', e)
+    store_device_token(token)
+
+
 def get_device_token() -> str | None:
     """Retrieve device JWT from Windows Credential Manager."""
     try:

@@ -23,6 +23,10 @@ POLL_INTERVAL_SECS = 15
 RESTART_DELAY_SECS = 5
 MAX_RESTART_ATTEMPTS = 10  # guard against crash-loop
 RESTART_WINDOW_SECS = 300  # reset counter after 5 min stable run
+# After main exits for self-update, PowerShell may need several seconds to copy the
+# exe and start the replacement. Wait for the single-instance mutex before relaunching.
+UPDATE_WAIT_POLL_SECS = 5
+UPDATE_WAIT_MAX_SECS = 120
 
 
 def _is_pid_running(pid: int) -> bool:
@@ -98,6 +102,51 @@ def run_watchdog(main_pid: int, pid_file: Path) -> None:
             logger.error(
                 'Watchdog: %d restart attempts exhausted, giving up', MAX_RESTART_ATTEMPTS
             )
+            break
+
+        # Self-update: main exits with os._exit while PowerShell replaces the binary.
+        # Do not relaunch the old exe until the replacement holds the agent mutex, or we time out.
+        update_exit_handled = False
+        try:
+            from agent.utils.update_exit_marker import (
+                another_agent_mutex_exists,
+                clear_update_replace_marker,
+                update_replace_marker_fresh,
+            )
+
+            if update_replace_marker_fresh():
+                update_exit_handled = True
+                logger.info(
+                    'Watchdog: update-replace marker present — waiting up to %ds for new process',
+                    UPDATE_WAIT_MAX_SECS,
+                )
+                waited = 0
+                while waited < UPDATE_WAIT_MAX_SECS:
+                    time.sleep(UPDATE_WAIT_POLL_SECS)
+                    waited += UPDATE_WAIT_POLL_SECS
+                    if another_agent_mutex_exists():
+                        logger.info('Watchdog: replacement agent is running — exiting without relaunch')
+                        clear_update_replace_marker()
+                        break
+                else:
+                    if another_agent_mutex_exists():
+                        logger.info('Watchdog: replacement agent detected after full wait — exiting')
+                        clear_update_replace_marker()
+                    else:
+                        logger.warning(
+                            'Watchdog: no replacement after %ds — clearing marker and relaunching',
+                            UPDATE_WAIT_MAX_SECS,
+                        )
+                        clear_update_replace_marker()
+                        time.sleep(RESTART_DELAY_SECS)
+                        _relaunch_agent()
+                        restart_count += 1
+                        last_restart_time = time.time()
+        except Exception as e:
+            logger.warning('Watchdog: update-marker handling failed (%s) — normal relaunch', e)
+            update_exit_handled = False
+
+        if update_exit_handled:
             break
 
         time.sleep(RESTART_DELAY_SECS)

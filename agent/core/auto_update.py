@@ -12,6 +12,7 @@ import requests
 
 from agent import config
 from agent.utils.logger import logger
+from agent.utils.update_exit_marker import write_update_replace_marker
 
 
 def is_newer_version(server_version: str, current_version: str) -> bool:
@@ -57,6 +58,12 @@ def download_update(download_url: str, token: str) -> Optional[Path]:
     return download_update_with_progress(download_url, token, lambda _: None)
 
 
+def _is_public_exe_download(url: str) -> bool:
+    """Static /downloads/ URLs are usually served without Bearer auth; some proxies reject unknown auth."""
+    u = (url or '').lower()
+    return '/downloads/' in u or u.endswith('.exe')
+
+
 def download_update_with_progress(
     download_url: str,
     token: str,
@@ -68,13 +75,23 @@ def download_update_with_progress(
     target = update_dir / 'BosowAgent_new.exe'
 
     try:
+        headers = {'Authorization': f'Bearer {token}'} if token else {}
         r = requests.get(
             download_url,
-            headers={'Authorization': f'Bearer {token}'},
+            headers=headers,
             stream=True,
             timeout=120,
             verify=certifi.where(),
         )
+        if r.status_code in (401, 403) and token and _is_public_exe_download(download_url):
+            r.close()
+            logger.info('Download retry without Authorization (public exe URL)')
+            r = requests.get(
+                download_url,
+                stream=True,
+                timeout=120,
+                verify=certifi.where(),
+            )
         r.raise_for_status()
         total = int(r.headers.get('Content-Length', 0))
         downloaded = 0
@@ -124,6 +141,7 @@ def apply_update_and_relaunch(new_exe_path: Path) -> None:
             close_fds=True,
         )
         logger.info('Update script launched — agent exiting for replacement')
+        write_update_replace_marker()
         os._exit(0)
     except Exception as e:
         logger.error('apply_update_and_relaunch failed: %s', e)

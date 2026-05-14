@@ -27,13 +27,12 @@ def _ensure_single_instance() -> bool:
 
 from agent import config
 from agent.auth.login import AuthTokens
-from agent.auth.token_store import store_device_token, store_refresh_token
+from agent.auth.token_store import store_device_token_from_jwt, store_refresh_token, store_user_session
 from agent.core.agent_service import AgentService
 from agent.overlay.lockscreen import LockScreenOverlay, OverlayConfig
 from agent.ui.tray_app import AgentTrayApp
 from agent.utils.logger import logger, setup_logger
 from agent.utils.startup import register_all, is_registered, add_defender_exclusions
-from agent.auth.token_store import store_device_token, store_refresh_token, store_user_session
 
 _tray: AgentTrayApp | None = None
 _service_loop: asyncio.AbstractEventLoop | None = None
@@ -68,6 +67,10 @@ def main() -> None:
     if not _ensure_single_instance():
         # Another instance is already running — exit silently
         sys.exit(0)
+
+    from agent.utils.update_exit_marker import clear_update_replace_marker
+
+    clear_update_replace_marker()
 
     setup_logger('BosowAgent')
     logger.info('=' * 60)
@@ -198,7 +201,7 @@ def _run_auth_flow() -> None:
     user = result.get('user', {})
 
     if token and token != '_pin_auth_':
-        store_device_token(token)
+        store_device_token_from_jwt(token)
         if refresh:
             store_refresh_token(refresh)
         if user:

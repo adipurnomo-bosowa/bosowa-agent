@@ -13,7 +13,6 @@ import certifi
 
 from agent import config
 from agent.auth.token_store import (
-    store_device_token,
     store_refresh_token,
     store_user_session,
     get_device_token,
@@ -21,6 +20,7 @@ from agent.auth.token_store import (
     store_session_code,
     clear_all_credentials,
     get_device_token_expiry,
+    store_device_token_from_jwt,
 )
 from agent.core.hardware import get_mac_address
 from agent.core.socket_client import AgentSocketClient
@@ -110,7 +110,7 @@ def direct_login(email: str, password: str) -> AuthTokens | None:
         user = data.get('user', {})
 
         # Persist securely
-        store_device_token(token)
+        store_device_token_from_jwt(token)
         if refresh_token:
             store_refresh_token(refresh_token)
         store_user_session(user)
@@ -194,10 +194,8 @@ def refresh_token_action(refresh_token: str) -> str | None:
         )
         resp.raise_for_status()
         data = resp.json()
-        from datetime import datetime, timezone, timedelta
         new_token = data['token']
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=14)
-        store_device_token(new_token, expires_at=expires_at)
+        store_device_token_from_jwt(new_token)
         new_refresh = data.get('refresh_token')
         if new_refresh:
             store_refresh_token(new_refresh)
@@ -228,8 +226,11 @@ def check_and_refresh_token() -> str | None:
     expiry = get_device_token_expiry()
     if expiry:
         from datetime import datetime, timezone, timedelta
-        # Refresh if within 8 minutes of expiry (tokens are 15 min, check every 4 min)
-        if datetime.now(timezone.utc) + timedelta(minutes=8) < expiry:
+        now = datetime.now(timezone.utc)
+        ttl_sec = (expiry - now).total_seconds()
+        # Short-lived (~15m): refresh inside last 8 minutes. Long-lived (e.g. 24h): inside last 1 hour.
+        cushion = timedelta(minutes=8) if ttl_sec < 3600 else timedelta(hours=1)
+        if now + cushion < expiry:
             return token  # still valid
 
     refresh = get_refresh_token()
