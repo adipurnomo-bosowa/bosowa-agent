@@ -422,12 +422,15 @@ class AgentTrayApp:
             QListWidget::item { padding: 11px 10px; border-radius: 7px; }
             QListWidget::item:selected { background: #1E3A52; border-left: 3px solid #3B82F6; color: #F1F5F9; }
             QListWidget::item:hover:!selected { background: #1A2744; }
-            QGroupBox { border: 1px solid #1F2937; border-radius: 8px; margin-top: 10px; padding-top: 14px; }
+            QGroupBox { background: #0D1B2A; border: 1px solid #1F2937; border-radius: 8px; margin-top: 10px; padding-top: 14px; }
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; color: #93C5FD; }
             QFrame#CardFrame { background: #111C2D; border: 1px solid #1E3A52; border-radius: 14px; padding: 16px; }
             QFrame#MetricCard { background: #111C2D; border: 1px solid #1E3A52; border-radius: 14px; padding: 16px; }
-            QTableWidget { gridline-color: #1E3A52; }
-            QTableWidget::item:alternate { background-color: #0F1927; }
+            QTableWidget { background: #111C2D; color: #E2E8F0; gridline-color: #1E3A52; alternate-background-color: #0F1927; border: 1px solid #1E3A52; border-radius: 6px; }
+            QTableWidget::item { color: #E2E8F0; background: #111C2D; padding: 4px; }
+            QTableWidget::item:alternate { background: #0F1927; color: #E2E8F0; }
+            QTableWidget::item:selected { background: #1E3A52; color: #F1F5F9; }
+            QHeaderView::section { background: #1A2E4A; color: #93C5FD; padding: 6px 8px; border: none; border-right: 1px solid #1F2937; border-bottom: 1px solid #1E3A52; font-weight: bold; font-size: 12px; }
             QScrollBar:vertical {
                 background: #0D1117;
                 width: 8px;
@@ -882,7 +885,9 @@ class AgentTrayApp:
                         self.dashboard_health_label.setText(f'{ok_count}/{len(checks)} checks OK{compliance_detail}')
                     health_table.setRowCount(len(checks))
                     for i, c in enumerate(checks):
-                        health_table.setItem(i, 0, QtWidgets.QTableWidgetItem(c['name']))
+                        name_item = QtWidgets.QTableWidgetItem(c['name'])
+                        name_item.setForeground(QtGui.QColor('#CBD5E1'))
+                        health_table.setItem(i, 0, name_item)
                         status_item = QtWidgets.QTableWidgetItem(c['status'])
                         if c['status'] == 'OK':
                             status_item.setForeground(QtGui.QColor('#22C55E'))
@@ -891,7 +896,9 @@ class AgentTrayApp:
                         else:
                             status_item.setForeground(QtGui.QColor('#EF4444'))
                         health_table.setItem(i, 1, status_item)
-                        health_table.setItem(i, 2, QtWidgets.QTableWidgetItem(c['detail']))
+                        detail_item = QtWidgets.QTableWidgetItem(c['detail'])
+                        detail_item.setForeground(QtGui.QColor('#94A3B8'))
+                        health_table.setItem(i, 2, detail_item)
 
                     # Update unmatched programs list
                     compliance = next((c for c in checks if c.get('name') == 'Software Compliance'), None)
@@ -944,6 +951,8 @@ class AgentTrayApp:
                         item = QtWidgets.QTableWidgetItem(val)
                         if t.get('adminNote'):
                             item.setForeground(QtGui.QColor('#64B5F6'))
+                        else:
+                            item.setForeground(QtGui.QColor('#CBD5E1'))
                         ticket_table.setItem(i, col, item)
             except Exception as e:
                 logger.warning('Load desktop tickets failed: %s', e)
