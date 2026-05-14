@@ -1,6 +1,16 @@
 # Bosowa Project — Handoff
 
-_Last updated: 2026-05-15_
+_Last updated: 2026-05-15 (malam — user off to sleep)_
+
+---
+
+## Status singkat (malam 15 Mei)
+
+| Area | Status |
+|------|--------|
+| **Login loop / auto-login** | **Selesai** — penyebab: `_restrict_file` di `auth/token_store.py` memanggil `icacls` tanpa grant user yang menjalankan agent → `tokens.enc` tidak bisa dibaca (`Permission denied`) → overlay login berulang. Fix: tambahkan `USERNAME:F` pada `icacls`. Rilis agent baru + hapus sekali `tokens.enc` lama di PC yang terlanjur kunci ACL. |
+| **Peta dashboard / pin lokasi** | **Belum berfungsi** di lingkungan user — lanjut debug: pastikan portal ter-deploy (`server.ts` `maybeLogLocation`, heartbeat/register kirim geo), agent kirim lokasi, DB `device_location_logs`, `GET /api/devices/locations`, komponen peta di `app/dashboard/page.tsx`. |
+| **Unduh exe dari browser** | Gunakan **`/api/downloads/agent-exe`** (sesi login admin) bila URL `/downloads/BosowAgent.exe` bermasalah; proxy dari `AGENT_DOWNLOAD_URL`. |
 
 ---
 
@@ -9,7 +19,7 @@ _Last updated: 2026-05-15_
 | | Path | Deploy |
 |---|---|---|
 | **bosowa-agent** | `bosowa-agent/` | push tag `vX.Y.Z` → GitHub Actions → SCP VPS |
-| **portal_bosowa** | `portal_bosowa/portal_bosowa/` | `git pull && npx prisma generate && npm run build && pm2 restart bosowa-portal` |
+| **portal_bosowa** | `portal_bosowa/portal_bosowa/` | `git pull && npx prisma generate && npm run build && pm2 restart bosowa-portal --update-env` |
 
 - VPS: `portal.bosowa.co.id`, pm2: `bosowa-portal`, port `3002`
 - Downloads: `https://portal.bosowa.co.id/downloads/BosowAgent.exe`
@@ -41,18 +51,20 @@ Sebelumnya pin multi sering kosong karena IP/geo punya kota/negara tetapi `latit
 
 ## Deployment Pending
 
-- [ ] Push tag `v1.0.7` (contoh) untuk trigger CI build exe
-- [ ] VPS: jalankan migrasi BU color:
+- [ ] Push tag semver baru (`v1.1.x` dst.) bila ada perubahan agent — CI hanya dari **tag** `v*`.
+- [ ] VPS portal: `git pull`, `npm run build`, **`pm2 restart bosowa-portal --update-env`** (wajib agar `AGENT_LATEST_VERSION` dari `.env` terbaca).
+- [ ] VPS: migrasi BU color jika belum:
   ```sql
   ALTER TABLE "BusinessUnit" ADD COLUMN IF NOT EXISTS "color" TEXT;
   ```
-- [ ] VPS: `npx prisma generate && npm run build && pm2 restart bosowa-portal`
 
 ---
 
 ## Bug / perbaikan terbaru (sesi 15 Mei)
 
-- Ticket count di tray desktop + notifikasi tiket blacklist + audit tanpa LINK + peta: sudah ditangani di kode portal/agent; deploy portal ke VPS agar API peta & lokasi terbaru aktif.
+- **Login berulang:** fix `token_store._restrict_file` + rilis exe baru (lihat tabel status di atas).
+- **UPDATE_AGENT / verifikasi versi:** portal + agent terbaru — event `restarting` + `target_version`, UI verifikasi vs heartbeat; unduh resmi `/api/downloads/agent-exe`.
+- **Peta:** user konfirmasi **masih belum jalan** setelah deploy — **TODO** berikutnya: end-to-end lokasi (agent → socket → Prisma → API → Leaflet), cek data di `device_location_logs` dan response `/api/devices/locations`.
 
 ---
 
