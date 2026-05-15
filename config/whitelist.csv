@@ -1,13 +1,19 @@
 category,name
 Productivity & Office,Microsoft 365
 Productivity & Office,Microsoft Outlook
+Productivity & Office,Microsoft Word
+Productivity & Office,Microsoft Excel
+Productivity & Office,Microsoft PowerPoint
 Productivity & Office,OneDrive
 Productivity & Office,Adobe Acrobat Reader
 Productivity & Office,WPS Office
 Productivity & Office,Nitro PDF
+Productivity & Office,Notion
 Browser & Internet,Google Chrome
 Browser & Internet,Mozilla Firefox
 Browser & Internet,Microsoft Edge
+Browser & Internet,1.1.1.1
+Browser & Internet,Cloudflare
 Communication & Meeting,Zoom
 Communication & Meeting,WhatsApp Desktop
 Communication & Meeting,Telegram Desktop
@@ -22,6 +28,10 @@ Remote Support & IT Tools,sVMS2000
 Remote Support & IT Tools,Attendance Management
 Remote Support & IT Tools,iVMS-4200
 Remote Support & IT Tools,Ultraviewer
+Remote Support & IT Tools,Termius
+Remote Support & IT Tools,MobaXterm
+Remote Support & IT Tools,Vysor
+Remote Support & IT Tools,Contabo
 Security & Antivirus,Microsoft Defender
 Security & Antivirus,Kaspersky Endpoint Security
 Security & Antivirus,Bitdefender GravityZone
@@ -32,6 +42,8 @@ Compression & Utility,Notepad++
 Compression & Utility,VLC Media Player
 Compression & Utility,Java Runtime Environment
 Compression & Utility,.NET Runtime
+Compression & Utility,CleanMyMac
+Compression & Utility,Bandwidth
 Design & Multimedia,Adobe Photoshop
 Design & Multimedia,Adobe Illustrator
 Design & Multimedia,CorelDRAW
@@ -41,9 +53,30 @@ Design & Multimedia,OBS Studio
 Developer & Database Tools,Visual Studio Code
 Developer & Database Tools,Visual Studio
 Developer & Database Tools,Git
+Developer & Database Tools,GitHub Desktop
 Developer & Database Tools,Docker Desktop
+Developer & Database Tools,Podman
 Developer & Database Tools,MySQL Workbench
 Developer & Database Tools,DBeaver
+Developer & Database Tools,Navicat
+Developer & Database Tools,DataGrip
+Developer & Database Tools,Postman
+Developer & Database Tools,Bruno
+Developer & Database Tools,Hopscotch
+Developer & Database Tools,S3 Explorer
+Developer & Database Tools,OpenClaw
+Developer & Database Tools,SourceTree
+Developer & Database Tools,Android Studio
+Developer & Database Tools,Xcode
+Developer & Database Tools,XAMPP
+Developer & Database Tools,Node.js
+Developer & Database Tools,npm
+Developer & Database Tools,WSL
+AI & Developer Tools,Cursor
+AI & Developer Tools,Claude
+AI & Developer Tools,opencode
+AI & Developer Tools,Codex
+AI & Developer Tools,Antigravity
 ERP / Business Application,SAP GUI
 ERP / Business Application,Oracle NetSuite
 ERP / Business Application,Odoo
