@@ -108,6 +108,13 @@ def _pick_server_url() -> str:
 
 SERVER_URL = _pick_server_url().strip().rstrip('/')
 
+# Optional Google Geolocation API key — improves WiFi BSSID accuracy significantly.
+# Set google_geo_key in config.enc (installer) or BOSOWA_GOOGLE_GEO_KEY env var.
+GOOGLE_GEO_KEY: str = (
+    _INSTALLER_CFG.get('google_geo_key')
+    or os.environ.get('BOSOWA_GOOGLE_GEO_KEY', '')
+)
+
 API_BASE = f'{SERVER_URL}/api'
 SOCKET_URL = SERVER_URL  # python-socketio connects to the same host
 
@@ -126,7 +133,7 @@ PIN_SETUP_TIMEOUT = 10      # seconds for server request in PIN setup
 # ---------------------------------------------------------------------------
 DEV_MODE = os.environ.get('BOSOWA_DEV', '0') == '1'
 LOG_LEVEL = 'DEBUG' if DEV_MODE else 'INFO'
-AGENT_VERSION = '1.1.0'
+AGENT_VERSION = '1.1.5'
 
 # Background silent download/replace from /api/agent/version (off by default).
 # Can fight the watchdog if replace fails or server version never matches the
@@ -170,6 +177,7 @@ __all__ = [
     'LOG_LEVEL',
     'AGENT_VERSION',
     'SILENT_AGENT_UPDATE',
+    'GOOGLE_GEO_KEY',
     'OVERLAY_LOCK_COLOR',
     'OVERLAY_ACCENT',
     'OVERLAY_SUCCESS',
