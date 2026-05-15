@@ -115,13 +115,16 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           envs: VERSION,DOWNLOAD_URL,ENV_FILE
           script: |
+            mkdir -p /var/www/downloads
+            # Write version file — portal reads this at runtime (no env var / restart needed)
+            echo -n "$VERSION" > /var/www/downloads/BosowAgent.version
+            # Keep env file in sync as fallback
             grep -q "^AGENT_LATEST_VERSION=" "$ENV_FILE" \
               && sed -i "s/^AGENT_LATEST_VERSION=.*/AGENT_LATEST_VERSION=$VERSION/" "$ENV_FILE" \
               || echo "AGENT_LATEST_VERSION=$VERSION" >> "$ENV_FILE"
             grep -q "^AGENT_DOWNLOAD_URL=" "$ENV_FILE" \
               && sed -i "s|^AGENT_DOWNLOAD_URL=.*|AGENT_DOWNLOAD_URL=$DOWNLOAD_URL|" "$ENV_FILE" \
               || echo "AGENT_DOWNLOAD_URL=$DOWNLOAD_URL" >> "$ENV_FILE"
-            mkdir -p /var/www/downloads
             pm2 restart bosowa-portal --update-env
 
       - name: Create GitHub Release
