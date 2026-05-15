@@ -43,6 +43,7 @@ class AgentTrayApp:
         self._badge_poll_lock = threading.Lock()
         self._running = False
         self._last_compliance: dict | None = None
+        self._desktop_dlg: QtWidgets.QDialog | None = None
 
     def start(self) -> None:
         if self._running:
@@ -430,7 +431,19 @@ class AgentTrayApp:
         threading.Thread(target=_fetch, daemon=True).start()
 
     def _show_desktop_app(self) -> None:
+        # Prevent duplicate dialogs — if one is already open, bring it to focus
+        if self._desktop_dlg is not None:
+            try:
+                self._desktop_dlg.raise_()
+                self._desktop_dlg.activateWindow()
+                return
+            except RuntimeError:
+                # Dialog was closed/destroyed without clearing the reference
+                self._desktop_dlg = None
+
         dlg = QtWidgets.QDialog()
+        self._desktop_dlg = dlg
+        dlg.finished.connect(lambda _: setattr(self, '_desktop_dlg', None))
         dlg.setWindowTitle('Bosowa Portal Desktop')
         icon = self._make_icon()
         dlg.setWindowIcon(icon)
@@ -1253,33 +1266,58 @@ class AgentTrayApp:
         close_btn.clicked.connect(dlg.accept)
 
         def load() -> None:
-            try:
-                tickets = list_my_tickets()
-                ticket_data.clear()
-                ticket_data.extend(tickets)
-                table.setRowCount(len(tickets))
-                for i, t in enumerate(tickets):
-                    created = t.get('createdAt')
-                    try:
-                        created_fmt = datetime.fromisoformat(str(created).replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
-                    except Exception:
-                        created_fmt = str(created or '-')
-                    values = [
-                        str(t.get('status', '-')),
-                        str(t.get('priority', '-')),
-                        str(t.get('category', '-')),
-                        str(t.get('title', '-')),
-                        created_fmt,
-                    ]
-                    for col, val in enumerate(values):
-                        item = QtWidgets.QTableWidgetItem(val)
-                        # Highlight rows with adminNote
-                        if t.get('adminNote'):
-                            item.setForeground(QtGui.QColor('#64B5F6'))
-                        table.setItem(i, col, item)
-            except Exception as e:
-                logger.warning('List tickets failed: %s', e)
-                QtWidgets.QMessageBox.critical(dlg, 'Gagal', str(e))
+            # Show loading state immediately on UI thread
+            table.setRowCount(1)
+            loading = QtWidgets.QTableWidgetItem('Memuat tiket...')
+            loading.setForeground(QtGui.QColor('#94A3B8'))
+            table.setItem(0, 0, loading)
+
+            def _bg() -> None:
+                try:
+                    tickets = list_my_tickets()
+                except Exception as e:
+                    logger.warning('List tickets failed: %s', e)
+                    def _err():
+                        table.setRowCount(1)
+                        err_item = QtWidgets.QTableWidgetItem(f'Gagal memuat tiket: {e}')
+                        err_item.setForeground(QtGui.QColor('#EF4444'))
+                        table.setItem(0, 0, err_item)
+                    QtCore.QTimer.singleShot(0, _err)
+                    return
+
+                def _populate():
+                    ticket_data.clear()
+                    ticket_data.extend(tickets)
+                    if not tickets:
+                        table.setRowCount(1)
+                        empty = QtWidgets.QTableWidgetItem('Belum ada tiket untuk akun ini.')
+                        empty.setForeground(QtGui.QColor('#64748B'))
+                        table.setItem(0, 0, empty)
+                        return
+                    table.setRowCount(len(tickets))
+                    for i, t in enumerate(tickets):
+                        created = t.get('createdAt')
+                        try:
+                            created_fmt = datetime.fromisoformat(str(created).replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
+                        except Exception:
+                            created_fmt = str(created or '-')
+                        values = [
+                            str(t.get('status', '-')),
+                            str(t.get('priority', '-')),
+                            str(t.get('category', '-')),
+                            str(t.get('title', '-')),
+                            created_fmt,
+                        ]
+                        for col, val in enumerate(values):
+                            item = QtWidgets.QTableWidgetItem(val)
+                            if t.get('adminNote'):
+                                item.setForeground(QtGui.QColor('#64B5F6'))
+                            else:
+                                item.setForeground(QtGui.QColor('#CBD5E1'))
+                            table.setItem(i, col, item)
+                QtCore.QTimer.singleShot(0, _populate)
+
+            threading.Thread(target=_bg, daemon=True).start()
 
         def on_row_clicked(row: int) -> None:
             if row < 0 or row >= len(ticket_data):
