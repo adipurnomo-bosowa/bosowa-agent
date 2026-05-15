@@ -52,19 +52,38 @@ def create_ticket(
     return data.get('ticket', data)
 
 
+def _try_refresh_token() -> bool:
+    """Refresh device token if expired. Returns True if token was refreshed."""
+    try:
+        from agent.auth.login import check_and_refresh_token
+        new_token = check_and_refresh_token()
+        return new_token is not None
+    except Exception:
+        return False
+
+
 def list_my_tickets(status: str | None = None, category: str | None = None) -> list[dict[str, Any]]:
     params: dict[str, str] = {}
     if status:
         params['status'] = status
     if category:
         params['category'] = category
-    resp = requests.get(
-        f'{config.API_BASE}/tickets',
-        headers=_headers(),
-        params=params or None,
-        timeout=config.HTTP_TIMEOUT,
-        verify=certifi.where(),
-    )
+
+    def _do_request() -> requests.Response:
+        return requests.get(
+            f'{config.API_BASE}/tickets',
+            headers=_headers(),
+            params=params or None,
+            timeout=config.HTTP_TIMEOUT,
+            verify=certifi.where(),
+        )
+
+    resp = _do_request()
+    # Auto-refresh on 401 (token expired) and retry once
+    if resp.status_code == 401:
+        if _try_refresh_token():
+            resp = _do_request()
+
     if not resp.ok:
         try:
             err = resp.json().get('error')
