@@ -127,17 +127,27 @@ def apply_update_and_relaunch(new_exe_path: Path) -> None:
 
     current_exe = Path(sys.executable)
     ps_script = config.AGENT_DIR / 'do_update.ps1'
-    # Retry loop: PyInstaller frozen exe can stay file-locked for several seconds
-    # after os._exit(0). Without retries the silent Copy-Item failure leaves the
-    # old binary in place and the watchdog eventually relaunches the old version.
+    # Root-cause: the watchdog is ALSO BosowAgent.exe (same file).
+    # As long as the watchdog process is alive it holds the exe file open,
+    # so Copy-Item always fails — even with many retries.
+    # Fix: force-kill ALL BosowAgent instances (main already exited via os._exit(0),
+    # but watchdog is still running) before attempting the copy.
+    # Only launch the new binary when the copy is confirmed successful.
+    new_exe_path_str = str(new_exe_path).replace('\\', '\\\\')
+    current_exe_str = str(current_exe).replace('\\', '\\\\')
     ps_content = f"""\
-$src = "{new_exe_path}"
-$dst = "{current_exe}"
-$maxAttempts = 15
+$src = "{new_exe_path_str}"
+$dst = "{current_exe_str}"
+$maxAttempts = 10
 $attempt = 0
 $copied = $false
 
-Start-Sleep -Seconds 6
+# Wait briefly for main process to finish its cleanup
+Start-Sleep -Seconds 2
+
+# Kill ALL BosowAgent instances (watchdog included) to release the exe file lock
+Get-Process -Name "BosowAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
 
 while ($attempt -lt $maxAttempts -and -not $copied) {{
     $attempt++
@@ -149,7 +159,12 @@ while ($attempt -lt $maxAttempts -and -not $copied) {{
     }}
 }}
 
-Start-Process $dst
+if ($copied) {{
+    Start-Process $dst
+}} else {{
+    # Copy failed — fall back to relaunching the existing binary
+    if (Test-Path $dst) {{ Start-Process $dst }}
+}}
 """
     ps_script.write_text(ps_content, encoding='utf-8')
 
