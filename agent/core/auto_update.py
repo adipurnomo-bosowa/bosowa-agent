@@ -135,43 +135,79 @@ def apply_update_and_relaunch(new_exe_path: Path) -> None:
     # Only launch the new binary when the copy is confirmed successful.
     # PowerShell double-quoted strings treat backslash as literal (NOT escape char).
     # Do NOT escape backslashes — str(Path) on Windows already gives single backslashes.
+    log_path = config.AGENT_DIR / 'update_debug.log'
     ps_content = f"""\
 $src = "{new_exe_path}"
 $dst = "{current_exe}"
-$maxAttempts = 10
-$attempt = 0
-$copied = $false
+$backup = "$dst.old"
+$log = "{log_path}"
 
-# Wait briefly for main process to finish its cleanup
+function Log($msg) {{ Add-Content $log "$(Get-Date -Format 'HH:mm:ss') $msg" }}
+
+Log "=== UPDATE START src=$src dst=$dst ==="
 Start-Sleep -Seconds 2
 
-# Kill ALL BosowAgent instances (watchdog included) to release the exe file lock
+# Kill ALL BosowAgent instances (main + watchdog) to release exe file lock
 Get-Process -Name "BosowAgent" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Log "Killed BosowAgent processes, waiting..."
 Start-Sleep -Seconds 3
 
-while ($attempt -lt $maxAttempts -and -not $copied) {{
-    $attempt++
-    try {{
-        Copy-Item -Force $src $dst -ErrorAction Stop
-        $copied = $true
-    }} catch {{
-        Start-Sleep -Seconds 2
+Log "src_exists=$(Test-Path $src)  dst_exists=$(Test-Path $dst)"
+
+$replaced = $false
+
+# Strategy 1: rename old -> .old, copy new -> original path (avoids overwrite lock)
+try {{
+    if (Test-Path $backup) {{ Remove-Item $backup -Force -ErrorAction SilentlyContinue }}
+    if (Test-Path $dst)    {{ Rename-Item $dst $backup -Force -ErrorAction Stop }}
+    Copy-Item -Force $src $dst -ErrorAction Stop
+    $replaced = $true
+    Log "Strategy-1 OK (rename+copy)"
+}} catch {{
+    Log "Strategy-1 FAIL: $_"
+    # Rollback: restore backup if dst is missing
+    if (-not (Test-Path $dst) -and (Test-Path $backup)) {{
+        Rename-Item $backup $dst -Force -ErrorAction SilentlyContinue
     }}
 }}
 
-if ($copied) {{
+# Strategy 2: direct overwrite fallback (8 attempts x 2 s)
+if (-not $replaced) {{
+    $attempt = 0
+    while ($attempt -lt 8 -and -not $replaced) {{
+        $attempt++
+        try {{
+            Copy-Item -Force $src $dst -ErrorAction Stop
+            $replaced = $true
+            Log "Strategy-2 OK attempt=$attempt"
+        }} catch {{
+            Log "Strategy-2 attempt=$attempt FAIL: $_"
+            Start-Sleep -Seconds 2
+        }}
+    }}
+}}
+
+if ($replaced) {{
+    Log "Launching new exe $dst"
     Start-Process $dst
 }} else {{
-    # Copy failed — fall back to relaunching the existing binary
-    if (Test-Path $dst) {{ Start-Process $dst }}
+    Log "All copy strategies failed — relaunching existing binary"
+    if (Test-Path $dst)    {{ Start-Process $dst }}
+    elseif (Test-Path $backup) {{ Rename-Item $backup $dst -Force -ErrorAction SilentlyContinue; Start-Process $dst }}
 }}
+
+Log "=== UPDATE DONE replaced=$replaced ==="
 """
     ps_script.write_text(ps_content, encoding='utf-8')
 
     try:
         subprocess.Popen(
-            ['powershell', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', str(ps_script)],
+            ['powershell', '-NonInteractive', '-WindowStyle', 'Hidden',
+             '-ExecutionPolicy', 'Bypass', '-File', str(ps_script)],
             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             close_fds=True,
         )
         logger.info('Update script launched — agent exiting for replacement')
