@@ -911,49 +911,8 @@ class AgentTrayApp:
                 except Exception as e:
                     logger.warning('Health check collection failed: %s', e)
                     checks = [{'name': 'Error', 'status': 'WARN', 'detail': f'Gagal mengumpulkan data: {e}'}]
-
-                def _update_health_ui() -> None:
-                    ok_count = sum(1 for c in checks if c['status'] == 'OK')
-                    compliance = next((c for c in checks if c.get('name') == 'Software Compliance'), None)
-                    compliance_detail = ''
-                    if compliance:
-                        compliance_detail = f'  •  Software: {compliance["detail"]}'
-                    health_summary_label.setText(f'{ok_count}/{len(checks)} checks OK{compliance_detail}')
-                    if hasattr(self, 'dashboard_health_label'):
-                        self.dashboard_health_label.setText(f'{ok_count}/{len(checks)} checks OK{compliance_detail}')
-                    health_table.setRowCount(len(checks))
-                    for i, c in enumerate(checks):
-                        name_item = QtWidgets.QTableWidgetItem(c['name'])
-                        name_item.setForeground(QtGui.QColor('#CBD5E1'))
-                        health_table.setItem(i, 0, name_item)
-                        status_item = QtWidgets.QTableWidgetItem(c['status'])
-                        if c['status'] == 'OK':
-                            status_item.setForeground(QtGui.QColor('#22C55E'))
-                        elif c['status'] == 'WARN':
-                            status_item.setForeground(QtGui.QColor('#F59E0B'))
-                        else:
-                            status_item.setForeground(QtGui.QColor('#EF4444'))
-                        health_table.setItem(i, 1, status_item)
-                        detail_item = QtWidgets.QTableWidgetItem(c['detail'])
-                        detail_item.setForeground(QtGui.QColor('#94A3B8'))
-                        health_table.setItem(i, 2, detail_item)
-
-                    # Update unmatched programs list
-                    compliance = next((c for c in checks if c.get('name') == 'Software Compliance'), None)
-                    unmatched_list = compliance.get('unmatched', []) if compliance else []
-                    while self.unmatched_widget.layout().count():
-                        item = self.unmatched_widget.layout().takeAt(0)
-                        if item.widget():
-                            item.widget().deleteLater()
-                    for prog in unmatched_list:
-                        lbl = QtWidgets.QLabel(f'  • {prog}')
-                        lbl.setStyleSheet('color: #94A3B8; font-size: 11px;')
-                        self.unmatched_widget.layout().addWidget(lbl)
-                    count = len(unmatched_list)
-                    arrow = '▼' if self.unmatched_widget.isVisible() else '▶'
-                    self.expand_btn.setText(f'{arrow} Lihat program tidak dikenal ({count})')
-
-                QtCore.QTimer.singleShot(0, _update_health_ui)
+                # Put result into queue — Qt timer will drain it on the Qt thread
+                _health_result_q.put(checks)
 
             threading.Thread(target=_run_health_checks_bg, daemon=True).start()
 
@@ -977,6 +936,44 @@ class AgentTrayApp:
 
         import queue as _queue
         _ticket_result_q: '_queue.Queue[tuple]' = _queue.Queue()
+        _health_result_q: '_queue.Queue[list]' = _queue.Queue()
+
+        def _apply_health_result() -> None:
+            """Called from Qt timer — drain health queue and update UI (always on Qt thread)."""
+            try:
+                checks = _health_result_q.get_nowait()
+            except _queue.Empty:
+                return
+            ok_count = sum(1 for c in checks if c['status'] == 'OK')
+            compliance = next((c for c in checks if c.get('name') == 'Software Compliance'), None)
+            compliance_detail = f'  •  Software: {compliance["detail"]}' if compliance else ''
+            health_summary_label.setText(f'{ok_count}/{len(checks)} checks OK{compliance_detail}')
+            if hasattr(self, 'dashboard_health_label'):
+                self.dashboard_health_label.setText(f'{ok_count}/{len(checks)} checks OK{compliance_detail}')
+            health_table.setRowCount(len(checks))
+            for i, c in enumerate(checks):
+                name_item = QtWidgets.QTableWidgetItem(c['name'])
+                name_item.setForeground(QtGui.QColor('#CBD5E1'))
+                health_table.setItem(i, 0, name_item)
+                status_item = QtWidgets.QTableWidgetItem(c['status'])
+                color = '#22C55E' if c['status'] == 'OK' else ('#F59E0B' if c['status'] == 'WARN' else '#EF4444')
+                status_item.setForeground(QtGui.QColor(color))
+                health_table.setItem(i, 1, status_item)
+                detail_item = QtWidgets.QTableWidgetItem(c.get('detail', ''))
+                detail_item.setForeground(QtGui.QColor('#94A3B8'))
+                health_table.setItem(i, 2, detail_item)
+            # Update unmatched programs list
+            unmatched_list = compliance.get('unmatched', []) if compliance else []
+            while self.unmatched_widget.layout().count():
+                item = self.unmatched_widget.layout().takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            for prog in unmatched_list:
+                lbl = QtWidgets.QLabel(f'  • {prog}')
+                lbl.setStyleSheet('color: #94A3B8; font-size: 11px;')
+                self.unmatched_widget.layout().addWidget(lbl)
+            arrow = '▼' if self.unmatched_widget.isVisible() else '▶'
+            self.expand_btn.setText(f'{arrow} Lihat program tidak dikenal ({len(unmatched_list)})')
 
         def _apply_ticket_result() -> None:
             """Called from Qt timer — drain result queue and update table (always on Qt thread)."""
@@ -1026,6 +1023,11 @@ class AgentTrayApp:
         _ticket_poll_timer.setInterval(300)
         _ticket_poll_timer.timeout.connect(_apply_ticket_result)
         _ticket_poll_timer.start()
+
+        _health_poll_timer = QtCore.QTimer(dlg)
+        _health_poll_timer.setInterval(300)
+        _health_poll_timer.timeout.connect(_apply_health_result)
+        _health_poll_timer.start()
 
         def load_tickets() -> None:
             ticket_table.setRowCount(0)

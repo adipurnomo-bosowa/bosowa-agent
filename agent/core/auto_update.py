@@ -133,11 +133,11 @@ def apply_update_and_relaunch(new_exe_path: Path) -> None:
     # Fix: force-kill ALL BosowAgent instances (main already exited via os._exit(0),
     # but watchdog is still running) before attempting the copy.
     # Only launch the new binary when the copy is confirmed successful.
-    new_exe_path_str = str(new_exe_path).replace('\\', '\\\\')
-    current_exe_str = str(current_exe).replace('\\', '\\\\')
+    # PowerShell double-quoted strings treat backslash as literal (NOT escape char).
+    # Do NOT escape backslashes — str(Path) on Windows already gives single backslashes.
     ps_content = f"""\
-$src = "{new_exe_path_str}"
-$dst = "{current_exe_str}"
+$src = "{new_exe_path}"
+$dst = "{current_exe}"
 $maxAttempts = 10
 $attempt = 0
 $copied = $false
