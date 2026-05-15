@@ -893,7 +893,11 @@ class AgentTrayApp:
             self._schedule_dashboard_ticket_count()
 
             def _run_health_checks_bg() -> None:
-                checks = self._collect_health_checks()
+                try:
+                    checks = self._collect_health_checks()
+                except Exception as e:
+                    logger.warning('Health check collection failed: %s', e)
+                    checks = [{'name': 'Error', 'status': 'WARN', 'detail': f'Gagal mengumpulkan data: {e}'}]
 
                 def _update_health_ui() -> None:
                     ok_count = sum(1 for c in checks if c['status'] == 'OK')
@@ -950,6 +954,12 @@ class AgentTrayApp:
                 if nav_titles[row] == 'Tickets':
                     load_tickets()
                 elif nav_titles[row] == 'Device Health Check':
+                    # Show loading row while background thread collects health data
+                    health_table.setRowCount(1)
+                    loading_item = QtWidgets.QTableWidgetItem('Memuat data kesehatan...')
+                    loading_item.setForeground(QtGui.QColor('#94A3B8'))
+                    health_table.setItem(0, 0, loading_item)
+                    health_summary_label.setText('Memeriksa...')
                     refresh_summary()
 
         def load_tickets() -> None:
@@ -975,6 +985,12 @@ class AgentTrayApp:
                 def _populate():
                     ticket_data_desktop.clear()
                     ticket_data_desktop.extend(tickets)
+                    if not tickets:
+                        ticket_table.setRowCount(1)
+                        empty_item = QtWidgets.QTableWidgetItem('Belum ada tiket untuk akun ini.')
+                        empty_item.setForeground(QtGui.QColor('#64748B'))
+                        ticket_table.setItem(0, 0, empty_item)
+                        return
                     ticket_table.setRowCount(len(tickets))
                     for i, t in enumerate(tickets):
                         created = t.get('createdAt')
