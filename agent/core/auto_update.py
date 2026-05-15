@@ -127,11 +127,30 @@ def apply_update_and_relaunch(new_exe_path: Path) -> None:
 
     current_exe = Path(sys.executable)
     ps_script = config.AGENT_DIR / 'do_update.ps1'
-    ps_content = (
-        f'Start-Sleep -Seconds 4\n'
-        f'Copy-Item -Force "{new_exe_path}" "{current_exe}"\n'
-        f'Start-Process "{current_exe}"\n'
-    )
+    # Retry loop: PyInstaller frozen exe can stay file-locked for several seconds
+    # after os._exit(0). Without retries the silent Copy-Item failure leaves the
+    # old binary in place and the watchdog eventually relaunches the old version.
+    ps_content = f"""\
+$src = "{new_exe_path}"
+$dst = "{current_exe}"
+$maxAttempts = 15
+$attempt = 0
+$copied = $false
+
+Start-Sleep -Seconds 6
+
+while ($attempt -lt $maxAttempts -and -not $copied) {{
+    $attempt++
+    try {{
+        Copy-Item -Force $src $dst -ErrorAction Stop
+        $copied = $true
+    }} catch {{
+        Start-Sleep -Seconds 2
+    }}
+}}
+
+Start-Process $dst
+"""
     ps_script.write_text(ps_content, encoding='utf-8')
 
     try:
