@@ -411,7 +411,8 @@ class AgentTrayApp:
                 tickets = list_my_tickets()
                 active = [t for t in tickets if t.get('status') in ('OPEN', 'IN_PROGRESS')]
                 count = len(active)
-            except Exception:
+            except Exception as e:
+                logger.warning('Ticket count fetch failed: %s', e)
                 count = 0
 
             def _ui() -> None:
@@ -771,6 +772,18 @@ class AgentTrayApp:
         ticket_actions.addStretch(1)
         tickets_layout.addLayout(ticket_actions)
 
+        _ticket_tab = ['ACTIVE']
+        tab_aktif_btn = QtWidgets.QPushButton('Aktif')
+        tab_aktif_btn.setStyleSheet('QPushButton { background: #1D4ED8; color: #fff; border: none; border-radius: 6px 0 0 6px; padding: 6px 18px; font-size: 12px; font-weight: 700; }')
+        tab_riwayat_btn = QtWidgets.QPushButton('Riwayat')
+        tab_riwayat_btn.setStyleSheet('QPushButton { background: #1F2937; color: #94A3B8; border: none; border-radius: 0 6px 6px 0; padding: 6px 18px; font-size: 12px; }')
+        tab_row = QtWidgets.QHBoxLayout()
+        tab_row.setSpacing(0)
+        tab_row.addWidget(tab_aktif_btn)
+        tab_row.addWidget(tab_riwayat_btn)
+        tab_row.addStretch(1)
+        tickets_layout.addLayout(tab_row)
+
         ticket_table = QtWidgets.QTableWidget()
         ticket_table.setColumnCount(5)
         ticket_table.setHorizontalHeaderLabels(['Status', 'Prioritas', 'Kategori', 'Judul', 'Dibuat'])
@@ -786,6 +799,7 @@ class AgentTrayApp:
         ticket_table.verticalHeader().setVisible(False)
         tickets_layout.addWidget(ticket_table)
         ticket_data_desktop: list[dict] = []
+        ticket_data_visible: list[dict] = []
 
         content_stack.addWidget(tickets_page)
 
@@ -975,6 +989,63 @@ class AgentTrayApp:
             arrow = '▼' if self.unmatched_widget.isVisible() else '▶'
             self.expand_btn.setText(f'{arrow} Lihat program tidak dikenal ({len(unmatched_list)})')
 
+        def render_ticket_table() -> None:
+            """Re-render ticket_table from ticket_data_desktop filtered by the active tab."""
+            tab = _ticket_tab[0]
+            status_colors = {'OPEN': '#34D399', 'IN_PROGRESS': '#FBBF24', 'CLOSED': '#94A3B8', 'RESOLVED': '#60A5FA'}
+            if tab == 'ACTIVE':
+                visible = [t for t in ticket_data_desktop if t.get('status') in ('OPEN', 'IN_PROGRESS')]
+            else:
+                visible = [t for t in ticket_data_desktop if t.get('status') in ('RESOLVED', 'CLOSED')]
+            ticket_data_visible.clear()
+            ticket_data_visible.extend(visible)
+            if not visible:
+                ticket_table.setRowCount(1)
+                if tab == 'ACTIVE' and any(t.get('status') in ('RESOLVED', 'CLOSED') for t in ticket_data_desktop):
+                    msg = 'Tidak ada tiket aktif. Lihat tab Riwayat untuk tiket selesai.'
+                elif ticket_data_desktop:
+                    msg = 'Tidak ada tiket di tab ini.'
+                else:
+                    msg = 'Belum ada tiket untuk akun ini.'
+                empty_item = QtWidgets.QTableWidgetItem(msg)
+                empty_item.setForeground(QtGui.QColor('#64748B'))
+                ticket_table.setItem(0, 0, empty_item)
+                return
+            ticket_table.setRowCount(len(visible))
+            for i, t in enumerate(visible):
+                created = t.get('createdAt')
+                try:
+                    created_fmt = datetime.fromisoformat(str(created).replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
+                except Exception:
+                    created_fmt = str(created or '-')
+                values = [
+                    str(t.get('status', '-')),
+                    str(t.get('priority', '-')),
+                    str(t.get('category', '-')),
+                    str(t.get('title', '-')),
+                    created_fmt,
+                ]
+                row_color = status_colors.get(t.get('status', ''), '#CBD5E1')
+                for col, val in enumerate(values):
+                    item = QtWidgets.QTableWidgetItem(val)
+                    if col == 0:
+                        item.setForeground(QtGui.QColor(row_color))
+                    elif t.get('adminNote'):
+                        item.setForeground(QtGui.QColor('#64B5F6'))
+                    else:
+                        item.setForeground(QtGui.QColor('#CBD5E1'))
+                    ticket_table.setItem(i, col, item)
+
+        def _switch_ticket_tab(tab: str) -> None:
+            _ticket_tab[0] = tab
+            if tab == 'ACTIVE':
+                tab_aktif_btn.setStyleSheet('QPushButton { background: #1D4ED8; color: #fff; border: none; border-radius: 6px 0 0 6px; padding: 6px 18px; font-size: 12px; font-weight: 700; }')
+                tab_riwayat_btn.setStyleSheet('QPushButton { background: #1F2937; color: #94A3B8; border: none; border-radius: 0 6px 6px 0; padding: 6px 18px; font-size: 12px; }')
+            else:
+                tab_aktif_btn.setStyleSheet('QPushButton { background: #1F2937; color: #94A3B8; border: none; border-radius: 6px 0 0 6px; padding: 6px 18px; font-size: 12px; }')
+                tab_riwayat_btn.setStyleSheet('QPushButton { background: #1D4ED8; color: #fff; border: none; border-radius: 0 6px 6px 0; padding: 6px 18px; font-size: 12px; font-weight: 700; }')
+            render_ticket_table()
+
         def _apply_ticket_result() -> None:
             """Called from Qt timer — drain result queue and update table (always on Qt thread)."""
             try:
@@ -987,36 +1058,9 @@ class AgentTrayApp:
                 err_item.setForeground(QtGui.QColor('#EF4444'))
                 ticket_table.setItem(0, 0, err_item)
             elif kind == 'ok':
-                tickets = payload
                 ticket_data_desktop.clear()
-                ticket_data_desktop.extend(tickets)
-                if not tickets:
-                    ticket_table.setRowCount(1)
-                    empty_item = QtWidgets.QTableWidgetItem('Belum ada tiket untuk akun ini.')
-                    empty_item.setForeground(QtGui.QColor('#64748B'))
-                    ticket_table.setItem(0, 0, empty_item)
-                    return
-                ticket_table.setRowCount(len(tickets))
-                for i, t in enumerate(tickets):
-                    created = t.get('createdAt')
-                    try:
-                        created_fmt = datetime.fromisoformat(str(created).replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M')
-                    except Exception:
-                        created_fmt = str(created or '-')
-                    values = [
-                        str(t.get('status', '-')),
-                        str(t.get('priority', '-')),
-                        str(t.get('category', '-')),
-                        str(t.get('title', '-')),
-                        created_fmt,
-                    ]
-                    for col, val in enumerate(values):
-                        item = QtWidgets.QTableWidgetItem(val)
-                        if t.get('adminNote'):
-                            item.setForeground(QtGui.QColor('#64B5F6'))
-                        else:
-                            item.setForeground(QtGui.QColor('#CBD5E1'))
-                        ticket_table.setItem(i, col, item)
+                ticket_data_desktop.extend(payload)
+                render_ticket_table()
 
         # Poll result queue every 300ms — reliable across frozen exe and Qt threads
         _ticket_poll_timer = QtCore.QTimer(dlg)
@@ -1056,16 +1100,18 @@ class AgentTrayApp:
         nav.currentRowChanged.connect(on_nav_changed)
         refresh_btn.clicked.connect(refresh_summary)
         back_btn.clicked.connect(go_back_to_dashboard)
-        quick_ticket_btn.clicked.connect(self._show_create_ticket_dialog)
+        quick_ticket_btn.clicked.connect(lambda: self._show_create_ticket_dialog(refresh_callback=load_tickets))
         # Quick "Lihat Tiket" now navigates internally instead of opening a separate window
         quick_list_btn.clicked.connect(go_to_tickets)
-        ticket_create_btn.clicked.connect(self._show_create_ticket_dialog)
+        ticket_create_btn.clicked.connect(lambda: self._show_create_ticket_dialog(refresh_callback=load_tickets))
         ticket_refresh_btn.clicked.connect(load_tickets)
+        tab_aktif_btn.clicked.connect(lambda: _switch_ticket_tab('ACTIVE'))
+        tab_riwayat_btn.clicked.connect(lambda: _switch_ticket_tab('HISTORY'))
 
         def on_desktop_ticket_clicked(row: int) -> None:
-            if row < 0 or row >= len(ticket_data_desktop):
+            if row < 0 or row >= len(ticket_data_visible):
                 return
-            self._show_ticket_detail(ticket_data_desktop[row], load_tickets)
+            self._show_ticket_detail(ticket_data_visible[row], load_tickets)
 
         ticket_table.cellClicked.connect(on_desktop_ticket_clicked)
         close_btn.clicked.connect(dlg.accept)
@@ -1092,7 +1138,7 @@ class AgentTrayApp:
         msg = f'User: {name}\nEmployee ID: {emp}\nMAC: {mac}'
         QtWidgets.QMessageBox.information(None, 'Status BosowAgent', msg)
 
-    def _show_create_ticket_dialog(self) -> None:
+    def _show_create_ticket_dialog(self, refresh_callback=None) -> None:
         dlg = QtWidgets.QDialog()
         dlg.setWindowTitle('Buat Tiket IT')
         dlg.setWindowIcon(self._make_icon())
@@ -1245,6 +1291,8 @@ class AgentTrayApp:
                     f"Tiket berhasil dibuat.\nID: {t.get('id', '-')}",
                 )
                 dlg.accept()
+                if refresh_callback:
+                    refresh_callback()
             except Exception as e:
                 logger.warning('Create ticket failed: %s', e)
                 QtWidgets.QMessageBox.critical(dlg, 'Gagal', str(e))
