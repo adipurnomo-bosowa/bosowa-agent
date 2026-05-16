@@ -115,29 +115,10 @@ def download_update_with_progress(
         return None
 
 
-def apply_update_and_relaunch(new_exe_path: Path) -> None:
-    """
-    Ganti exe saat ini dengan yang baru via PowerShell helper script, lalu exit.
-    Task Scheduler (ONLOGON) akan otomatis relaunch agent.
-    Di dev mode (tidak frozen), hanya log dan skip replacement.
-    """
-    if not getattr(sys, 'frozen', False):
-        logger.info('Dev mode — skip exe replacement. New exe: %s', new_exe_path)
-        return
-
-    current_exe = Path(sys.executable)
-    ps_script = config.AGENT_DIR / 'do_update.ps1'
-    # Root-cause: the watchdog is ALSO BosowAgent.exe (same file).
-    # As long as the watchdog process is alive it holds the exe file open,
-    # so Copy-Item always fails — even with many retries.
-    # Fix: force-kill ALL BosowAgent instances (main already exited via os._exit(0),
-    # but watchdog is still running) before attempting the copy.
-    # Only launch the new binary when the copy is confirmed successful.
-    # PowerShell double-quoted strings treat backslash as literal (NOT escape char).
-    # Do NOT escape backslashes — str(Path) on Windows already gives single backslashes.
-    log_path = config.AGENT_DIR / 'update_debug.log'
-    ps_content = f"""\
-$src = "{new_exe_path}"
+def _make_ps1_content(new_exe: Path, current_exe: Path, log_path: Path) -> str:
+    """Generate PowerShell update script content for the given paths."""
+    return f"""\
+$src = "{new_exe}"
 $dst = "{current_exe}"
 $backup = "$dst.old"
 $log = "{log_path}"
@@ -187,17 +168,80 @@ if (-not $replaced) {{
     }}
 }}
 
+# Verify copy integrity by comparing file sizes
+if ($replaced) {{
+    $src_size = (Get-Item $src -ErrorAction SilentlyContinue).Length
+    $dst_size = (Get-Item $dst -ErrorAction SilentlyContinue).Length
+    Log "size_check src=$src_size dst=$dst_size ok=$(($src_size -eq $dst_size))"
+    if ($src_size -and $dst_size -and ($src_size -ne $dst_size)) {{
+        Log "Size mismatch after copy — treating as failed"
+        $replaced = $false
+    }}
+}}
+
 if ($replaced) {{
     Log "Launching new exe $dst"
-    Start-Process $dst
+    $proc = Start-Process $dst -PassThru -ErrorAction SilentlyContinue
+    if ($proc) {{
+        Log "Launched PID=$($proc.Id)"
+        Start-Sleep -Seconds 5
+        if ($proc.HasExited) {{
+            $code = $proc.ExitCode
+            Log "WARNING: new exe exited quickly (code=$code) — retrying launch"
+            Start-Process $dst -ErrorAction SilentlyContinue
+        }} else {{
+            Log "New exe running OK PID=$($proc.Id)"
+        }}
+    }} else {{
+        Log "WARNING: Start-Process returned no handle — retrying"
+        Start-Process $dst -ErrorAction SilentlyContinue
+    }}
 }} else {{
     Log "All copy strategies failed — relaunching existing binary"
-    if (Test-Path $dst)    {{ Start-Process $dst }}
+    if (Test-Path $dst)        {{ Start-Process $dst }}
     elseif (Test-Path $backup) {{ Rename-Item $backup $dst -Force -ErrorAction SilentlyContinue; Start-Process $dst }}
 }}
 
 Log "=== UPDATE DONE replaced=$replaced ==="
 """
+
+
+def write_update_ps1() -> None:
+    """Write the current PS1 template to disk using current exe paths.
+
+    Called at agent startup so the on-disk script always reflects the running
+    version's template — guards against stale scripts from older agent installs.
+    Also called before any update attempt as a belt-and-suspenders measure.
+    """
+    if not getattr(sys, 'frozen', False):
+        return
+    current_exe = Path(sys.executable)
+    new_exe_path = config.AGENT_DIR / 'update' / 'BosowAgent_new.exe'
+    log_path = config.AGENT_DIR / 'update_debug.log'
+    ps_script = config.AGENT_DIR / 'do_update.ps1'
+    try:
+        content = _make_ps1_content(new_exe_path, current_exe, log_path)
+        ps_script.write_text(content, encoding='utf-8')
+        logger.debug('Update PS1 refreshed at %s', ps_script)
+    except Exception as e:
+        logger.warning('write_update_ps1 failed: %s', e)
+
+
+def apply_update_and_relaunch(new_exe_path: Path) -> None:
+    """
+    Ganti exe saat ini dengan yang baru via PowerShell helper script, lalu exit.
+    Task Scheduler (ONLOGON) akan otomatis relaunch agent.
+    Di dev mode (tidak frozen), hanya log dan skip replacement.
+    """
+    if not getattr(sys, 'frozen', False):
+        logger.info('Dev mode — skip exe replacement. New exe: %s', new_exe_path)
+        return
+
+    current_exe = Path(sys.executable)
+    ps_script = config.AGENT_DIR / 'do_update.ps1'
+    log_path = config.AGENT_DIR / 'update_debug.log'
+
+    ps_content = _make_ps1_content(new_exe_path, current_exe, log_path)
     ps_script.write_text(ps_content, encoding='utf-8')
 
     try:

@@ -48,6 +48,10 @@ def setup_logger(name: str = 'BosowAgent') -> logging.Logger:
     fh.setFormatter(fmt)
     logger.addHandler(fh)
 
+    # Prevent double-logging when this is a child logger (e.g. BosowAgent.watchdog)
+    if '.' in name:
+        logger.propagate = False
+
     # Console handler only in dev mode
     if config.DEV_MODE:
         ch = logging.StreamHandler(sys.stderr)

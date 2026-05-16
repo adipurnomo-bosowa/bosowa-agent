@@ -81,6 +81,15 @@ def main() -> None:
     config.AGENT_DIR.mkdir(parents=True, exist_ok=True)
     config.LOG_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Refresh the on-disk update script with the current template.
+    # Ensures that even after a manual install over an older version, the next
+    # dashboard-triggered update uses this version's (improved) PS1 strategy.
+    try:
+        from agent.core.auto_update import write_update_ps1
+        write_update_ps1()
+    except Exception as e:
+        logger.debug('write_update_ps1 skipped: %s', e)
+
     # Add Windows Defender exclusions (non-fatal; re-runs if exe path changes after update)
     try:
         add_defender_exclusions()
