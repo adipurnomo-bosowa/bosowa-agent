@@ -4,8 +4,24 @@ from __future__ import annotations
 import logging
 import os
 import re
+import subprocess
+
+from agent.utils.proc import NO_WINDOW
 
 logger = logging.getLogger(__name__)
+
+
+def _flush_dns() -> None:
+    """Run ipconfig /flushdns without opening a console window."""
+    try:
+        subprocess.run(
+            ['ipconfig', '/flushdns'],
+            capture_output=True,
+            timeout=10,
+            creationflags=NO_WINDOW,
+        )
+    except Exception as e:
+        logger.debug('flushdns failed: %s', e)
 
 HOSTS_FILE = r'C:\Windows\System32\drivers\etc\hosts'
 MARKER_START = '# BOSOWA_PORTAL_START'
@@ -62,7 +78,7 @@ async def handle_block_website(payload: dict) -> dict:
 
     try:
         _write_hosts(content)
-        os.system('ipconfig /flushdns')
+        _flush_dns()
     except PermissionError:
         raise PermissionError('Admin privileges required to modify hosts file')
 
@@ -93,7 +109,7 @@ async def handle_unblock_website(payload: dict) -> dict:
 
     try:
         _write_hosts(content)
-        os.system('ipconfig /flushdns')
+        _flush_dns()
     except PermissionError:
         raise PermissionError('Admin privileges required to modify hosts file')
 

@@ -230,8 +230,9 @@ class AgentService:
 def _trigger_reboot() -> None:
     try:
         import subprocess
+        from agent.utils.proc import NO_WINDOW
         subprocess.run(['shutdown', '/r', '/t', '10', '/c', 'Remote reboot from Bosowa Portal'],
-                       capture_output=True)
+                       capture_output=True, creationflags=NO_WINDOW)
     except Exception as e:
         logger.error('Reboot command failed: %s', e)
 
@@ -239,7 +240,8 @@ def _trigger_reboot() -> None:
 def _trigger_shutdown() -> None:
     try:
         import subprocess
+        from agent.utils.proc import NO_WINDOW
         subprocess.run(['shutdown', '/s', '/t', '10', '/c', 'Remote shutdown from Bosowa Portal'],
-                       capture_output=True)
+                       capture_output=True, creationflags=NO_WINDOW)
     except Exception as e:
         logger.error('Shutdown command failed: %s', e)

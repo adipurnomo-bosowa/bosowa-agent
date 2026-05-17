@@ -34,11 +34,13 @@ def _run_installer_sync(path: str, extra_args: list[str]) -> tuple[int, str]:
     """Run installer synchronously. Returns (exit_code, combined output)."""
     cmd = _build_install_cmd(path, extra_args)
     try:
+        from agent.utils.proc import NO_WINDOW
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=INSTALL_TIMEOUT,
+            creationflags=NO_WINDOW,
         )
         return result.returncode, (result.stdout + result.stderr).strip()
     except subprocess.TimeoutExpired:

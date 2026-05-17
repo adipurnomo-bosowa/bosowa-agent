@@ -56,10 +56,12 @@ def _capture_via_powershell() -> bytes:
         f.write(ps_script)
 
     try:
+        from agent.utils.proc import NO_WINDOW
         result = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
              "-ExecutionPolicy", "Bypass", "-Command", ps_script],
-            capture_output=True, timeout=30
+            capture_output=True, timeout=30,
+            creationflags=NO_WINDOW,
         )
         if result.returncode != 0:
             raise RuntimeError(f"PowerShell failed: {result.stderr.decode(errors='ignore')}")

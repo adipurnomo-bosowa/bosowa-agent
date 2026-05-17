@@ -57,9 +57,11 @@ if (-not (Test-Path $userPath)) { New-Item -Path $userPath -Force | Out-Null }
 Set-ItemProperty -Path $userPath -Name Value -Value Allow -Type String -Force
 """
     try:
+        from agent.utils.proc import NO_WINDOW
         subprocess.run(
             ['powershell', '-NonInteractive', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps],
             capture_output=True, timeout=10,
+            creationflags=NO_WINDOW,
         )
     except Exception as e:
         logger.info('Location services enable failed: %s', e)
@@ -93,9 +95,11 @@ def fetch_windows_location() -> dict | None:
         return None
     ensure_location_services_enabled()
     try:
+        from agent.utils.proc import NO_WINDOW
         result = subprocess.run(
             ['powershell', '-NonInteractive', '-NoProfile', '-WindowStyle', 'Hidden', '-Command', _PS_GEO_SCRIPT],
             capture_output=True, text=True, timeout=15,
+            creationflags=NO_WINDOW,
         )
         if result.returncode != 0 or not result.stdout.strip():
             return None
@@ -117,9 +121,11 @@ def fetch_windows_location() -> dict | None:
 
 def _scan_wifi_bssids() -> list[dict]:
     """Return list of {bssid, signal_pct} from nearby WiFi networks via netsh."""
+    from agent.utils.proc import NO_WINDOW
     result = subprocess.run(
         ['netsh', 'wlan', 'show', 'networks', 'mode=bssid'],
         capture_output=True, timeout=10, encoding='utf-8', errors='ignore',
+        creationflags=NO_WINDOW,
     )
     if result.returncode not in (0, 1):  # netsh exits 1 if no adapter, still outputs
         return []

@@ -353,12 +353,13 @@ def _restrict_file(path: 'os.PathLike') -> None:
     """
     try:
         import subprocess
+        from agent.utils.proc import NO_WINDOW
         username = os.environ.get('USERNAME', '').strip()
         cmd = ['icacls', str(path), '/inheritance:r', '/grant:r',
                'SYSTEM:F', 'Administrators:F']
         if username:
             cmd.append(f'{username}:F')
-        result = subprocess.run(cmd, capture_output=True, timeout=5)
+        result = subprocess.run(cmd, capture_output=True, timeout=5, creationflags=NO_WINDOW)
         if result.returncode != 0:
             logger.warning('icacls failed on %s: %s', path, result.stderr.decode())
     except Exception as e:

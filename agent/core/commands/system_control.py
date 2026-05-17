@@ -25,11 +25,13 @@ async def handle_lock_screen(payload: dict) -> dict:
 async def handle_shutdown(payload: dict) -> dict:
     """Shut down the PC after optional delay."""
     import subprocess
+    from agent.utils.proc import NO_WINDOW
     delay = payload.get('delay_seconds', 30)
     message = payload.get('message', 'PC ini akan dimatikan oleh IT Admin Bosowa.')
     subprocess.run(
         ['shutdown', '/s', '/t', str(delay), '/c', message, '/f'],
         capture_output=True,
+        creationflags=NO_WINDOW,
     )
     logger.info('Shutdown scheduled in %ds', delay)
     return {'action': 'shutdown', 'delay_seconds': delay, 'message': message}
@@ -38,11 +40,13 @@ async def handle_shutdown(payload: dict) -> dict:
 async def handle_restart(payload: dict) -> dict:
     """Restart the PC after optional delay."""
     import subprocess
+    from agent.utils.proc import NO_WINDOW
     delay = payload.get('delay_seconds', 30)
     message = payload.get('message', 'PC ini akan di-restart oleh IT Admin Bosowa.')
     subprocess.run(
         ['shutdown', '/r', '/t', str(delay), '/c', message, '/f'],
         capture_output=True,
+        creationflags=NO_WINDOW,
     )
     logger.info('Restart scheduled in %ds', delay)
     return {'action': 'restart', 'delay_seconds': delay, 'message': message}
@@ -65,11 +69,11 @@ def _schedule_delete_executable() -> None:
             'del /f /q "%~f0"\r\n',
             encoding='utf-8',
         )
-        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+        from agent.utils.proc import DETACHED_NO_WINDOW
         subprocess.Popen(
             ['cmd.exe', '/c', str(bat)],
             cwd=str(tempfile.gettempdir()),
-            creationflags=flags,
+            creationflags=DETACHED_NO_WINDOW,
             close_fds=True,
         )
         logger.info('UNINSTALL_AGENT: scheduled deletion of %s and %s', exe, agent_dir)

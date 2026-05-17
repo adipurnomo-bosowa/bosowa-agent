@@ -60,9 +60,11 @@ async def handle_get_network_info(payload: dict) -> dict:
 
     # DNS servers via netsh
     try:
+        from agent.utils.proc import NO_WINDOW
         result = subprocess.run(
             ['netsh', 'interface', 'ip', 'show', 'dns'],
             capture_output=True, text=True, timeout=5,
+            creationflags=NO_WINDOW,
         )
         dns_raw = result.stdout
     except Exception as e:

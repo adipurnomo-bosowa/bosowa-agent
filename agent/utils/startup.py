@@ -115,10 +115,12 @@ def register_task_scheduler(exe_path: str | None = None) -> bool:
     ]
 
     try:
+        from agent.utils.proc import NO_WINDOW
         result = subprocess.run(
             cmd,
             capture_output=True,
             timeout=30,
+            creationflags=NO_WINDOW,
         )
         if result.returncode == 0:
             logger.info('Task Scheduler task "%s" created', task_name)
@@ -142,10 +144,12 @@ def unregister_task_scheduler() -> bool:
     """Remove the BosowAgent Task Scheduler task."""
     task_name = 'BosowAgent_AutoStart'
     try:
+        from agent.utils.proc import NO_WINDOW
         result = subprocess.run(
             ['schtasks', '/Delete', '/TN', task_name, '/F'],
             capture_output=True,
             timeout=15,
+            creationflags=NO_WINDOW,
         )
         if result.returncode == 0:
             logger.info('Task Scheduler task "%s" removed', task_name)
@@ -182,10 +186,12 @@ def add_defender_exclusions() -> bool:
             f'Add-MpPreference -ExclusionPath "{agent_dir}" -ErrorAction SilentlyContinue; '
             f'Add-MpPreference -ExclusionProcess "{exe}" -ErrorAction SilentlyContinue'
         )
+        from agent.utils.proc import NO_WINDOW
         result = subprocess.run(
             ['powershell', '-NonInteractive', '-NoProfile', '-Command', script],
             capture_output=True,
             timeout=30,
+            creationflags=NO_WINDOW,
         )
         if result.returncode == 0:
             try:

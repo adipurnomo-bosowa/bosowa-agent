@@ -405,25 +405,79 @@ class AgentTrayApp:
                     'detail': f'Gagal cek: {e}'}
 
     def _schedule_dashboard_ticket_count(self) -> None:
-        """Refresh the dashboard 'Tiket Aktif' metric (background thread + UI thread hop)."""
+        """Refresh the dashboard 'Tiket Aktif' metric + preview list (background + UI hop)."""
         def _fetch() -> None:
             try:
                 tickets = list_my_tickets()
                 active = [t for t in tickets if t.get('status') in ('OPEN', 'IN_PROGRESS')]
-                count = len(active)
             except Exception as e:
                 logger.warning('Ticket count fetch failed: %s', e)
-                count = 0
+                active = []
+            count = len(active)
+            top_active = active[:3]
 
             def _ui() -> None:
                 tv = getattr(self, 'ticket_card_val', None)
                 ts = getattr(self, 'ticket_card_status', None)
-                if tv is None or ts is None:
+                if tv is not None and ts is not None:
+                    try:
+                        tv.setText(str(count))
+                        ts.setText('AKTIF' if count else 'KOSONG')
+                        ts.setStyleSheet(
+                            f'color: {"#60A5FA" if count else "#475569"}; '
+                            f'font-size: 11px; font-weight: 600;'
+                        )
+                    except RuntimeError:
+                        pass
+
+                # Render preview rows in dashboard_active_tickets_layout (if it exists)
+                layout = getattr(self, 'dashboard_active_tickets_layout', None)
+                if layout is None:
                     return
                 try:
-                    tv.setText(str(count))
-                    ts.setText('AKTIF')
-                    ts.setStyleSheet('color: #60A5FA; font-size: 11px; font-weight: 600;')
+                    while layout.count():
+                        item = layout.takeAt(0)
+                        if item.widget():
+                            item.widget().deleteLater()
+                    if not top_active:
+                        empty_lbl = QtWidgets.QLabel('Tidak ada tiket aktif.')
+                        empty_lbl.setStyleSheet('color: #64748B; font-size: 11px; padding: 4px 0;')
+                        layout.addWidget(empty_lbl)
+                        return
+                    status_colors = {'OPEN': '#34D399', 'IN_PROGRESS': '#FBBF24'}
+                    for t in top_active:
+                        row_w = QtWidgets.QWidget()
+                        row_w.setStyleSheet('background: transparent;')
+                        row = QtWidgets.QHBoxLayout(row_w)
+                        row.setContentsMargins(0, 2, 0, 2)
+                        row.setSpacing(8)
+                        status = str(t.get('status', '-'))
+                        title = str(t.get('title', '-'))
+                        priority = str(t.get('priority', '-'))
+                        status_lbl = QtWidgets.QLabel(status)
+                        status_lbl.setStyleSheet(
+                            f'color: {status_colors.get(status, "#CBD5E1")}; '
+                            f'font-size: 10px; font-weight: 700; min-width: 90px;'
+                        )
+                        status_lbl.setFixedWidth(100)
+                        title_lbl = QtWidgets.QLabel(title)
+                        title_lbl.setStyleSheet('color: #E2E8F0; font-size: 12px;')
+                        prio_lbl = QtWidgets.QLabel(priority)
+                        prio_color = (
+                            '#EF4444' if priority == 'HIGH'
+                            else ('#FBBF24' if priority == 'MEDIUM' else '#94A3B8')
+                        )
+                        prio_lbl.setStyleSheet(
+                            f'color: {prio_color}; font-size: 10px; font-weight: 700;'
+                        )
+                        row.addWidget(status_lbl)
+                        row.addWidget(title_lbl, 1)
+                        row.addWidget(prio_lbl)
+                        layout.addWidget(row_w)
+                    if count > len(top_active):
+                        more_lbl = QtWidgets.QLabel(f'+{count - len(top_active)} tiket lainnya')
+                        more_lbl.setStyleSheet('color: #64748B; font-size: 10px; padding: 2px 0;')
+                        layout.addWidget(more_lbl)
                 except RuntimeError:
                     pass
 
@@ -666,6 +720,35 @@ class AgentTrayApp:
         self.dashboard_health_label = QtWidgets.QLabel('Memuat status kesehatan...')
         self.dashboard_health_label.setStyleSheet('color: #94A3B8; font-size: 11px; padding: 6px 0;')
         dashboard_layout.addWidget(self.dashboard_health_label)
+
+        # === TIKET AKTIF PREVIEW (3 tiket teratas) ===
+        active_tickets_card = QtWidgets.QFrame()
+        active_tickets_card.setObjectName('CardFrame')
+        active_tickets_vbox = QtWidgets.QVBoxLayout(active_tickets_card)
+        active_tickets_vbox.setContentsMargins(14, 12, 14, 12)
+        active_tickets_vbox.setSpacing(6)
+
+        active_tickets_header = QtWidgets.QHBoxLayout()
+        active_tickets_title = QtWidgets.QLabel('🎫 Tiket Aktif Terbaru')
+        active_tickets_title.setStyleSheet('color: #93C5FD; font-size: 12px; font-weight: 700;')
+        active_tickets_header.addWidget(active_tickets_title)
+        active_tickets_header.addStretch(1)
+        active_tickets_open_btn = QtWidgets.QPushButton('Lihat Semua →')
+        active_tickets_open_btn.setStyleSheet(
+            'QPushButton { background: transparent; color: #60A5FA; border: none; '
+            'font-size: 11px; padding: 2px 6px; } QPushButton:hover { color: #93C5FD; }'
+        )
+        active_tickets_header.addWidget(active_tickets_open_btn)
+        active_tickets_vbox.addLayout(active_tickets_header)
+
+        active_tickets_list_w = QtWidgets.QWidget()
+        active_tickets_list_w.setStyleSheet('background: transparent;')
+        active_tickets_list = QtWidgets.QVBoxLayout(active_tickets_list_w)
+        active_tickets_list.setContentsMargins(0, 0, 0, 0)
+        active_tickets_list.setSpacing(4)
+        active_tickets_vbox.addWidget(active_tickets_list_w)
+        self.dashboard_active_tickets_layout = active_tickets_list
+        dashboard_layout.addWidget(active_tickets_card)
 
         dashboard_layout.addStretch()
 
@@ -1103,6 +1186,7 @@ class AgentTrayApp:
         quick_ticket_btn.clicked.connect(lambda: self._show_create_ticket_dialog(refresh_callback=load_tickets))
         # Quick "Lihat Tiket" now navigates internally instead of opening a separate window
         quick_list_btn.clicked.connect(go_to_tickets)
+        active_tickets_open_btn.clicked.connect(go_to_tickets)
         ticket_create_btn.clicked.connect(lambda: self._show_create_ticket_dialog(refresh_callback=load_tickets))
         ticket_refresh_btn.clicked.connect(load_tickets)
         tab_aktif_btn.clicked.connect(lambda: _switch_ticket_tab('ACTIVE'))
