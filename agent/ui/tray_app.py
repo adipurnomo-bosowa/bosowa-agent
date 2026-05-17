@@ -612,10 +612,16 @@ class AgentTrayApp:
         online_card.setObjectName('Card')
         online_layout = QtWidgets.QVBoxLayout(online_card)
         online_layout.addWidget(QtWidgets.QLabel('Status Agent'))
-        status_value = QtWidgets.QLabel('ONLINE')
+        status_value = QtWidgets.QLabel('—')
         status_value.setFont(QtGui.QFont('Segoe UI', 16, QtGui.QFont.Bold))
-        status_value.setStyleSheet('color: #22C55E;')
+        status_value.setStyleSheet('color: #94A3B8;')
         online_layout.addWidget(status_value)
+        status_sub = QtWidgets.QLabel('Memeriksa koneksi…')
+        status_sub.setStyleSheet('color: #94A3B8; font-size: 11px;')
+        status_sub.setWordWrap(True)
+        online_layout.addWidget(status_sub)
+        self.status_value_label = status_value
+        self.status_sub_label = status_sub
         cards_row.addWidget(online_card, 1)
 
         uptime_card = QtWidgets.QFrame()
@@ -974,7 +980,52 @@ class AgentTrayApp:
             status_lbl.setText(text)
             status_lbl.setStyleSheet(f'color: {color}; font-size: 11px; font-weight: 600;')
 
+        def refresh_online_status() -> None:
+            try:
+                from agent.core import agent_state
+                snap = agent_state.get_snapshot()
+            except Exception:
+                return
+            sv = getattr(self, 'status_value_label', None)
+            ss = getattr(self, 'status_sub_label', None)
+            if sv is None or ss is None:
+                return
+            online = bool(snap.get('online'))
+            sac_mode = snap.get('sac_mode', 'unknown')
+            def_ok = snap.get('defender_exclusion_ok')
+            try:
+                if online:
+                    sv.setText('ONLINE')
+                    sv.setStyleSheet('color: #22C55E;')
+                    sub_parts: list[str] = ['Terhubung ke portal']
+                else:
+                    sv.setText('OFFLINE')
+                    sv.setStyleSheet('color: #F59E0B;')
+                    last_off = snap.get('last_offline_ts') or 0
+                    err = (snap.get('last_error') or '').strip()
+                    if last_off:
+                        from datetime import datetime as _dt
+                        when = _dt.fromtimestamp(last_off).strftime('%H:%M:%S')
+                        base = f'Putus sejak {when}. Heartbeat ditahan, akan dikirim saat reconnect.'
+                    else:
+                        base = 'Belum bisa terhubung ke portal.'
+                    if err:
+                        base += f' ({err})'
+                    sub_parts = [base]
+                # Append security-environment hints (always visible)
+                if sac_mode == 'on':
+                    sub_parts.append('⚠ Smart App Control aktif — update unsigned bisa diblokir.')
+                if def_ok is False:
+                    sub_parts.append('⚠ Defender exclusion belum terdaftar (jalankan agent sebagai admin sekali).')
+                ss.setText('  '.join(sub_parts))
+                ss.setStyleSheet(
+                    f'color: {"#94A3B8" if online else "#F59E0B"}; font-size: 11px;'
+                )
+            except RuntimeError:
+                pass
+
         def refresh_summary() -> None:
+            refresh_online_status()
             data = self._collect_device_summary()
             refresh_hw()
 
@@ -1204,6 +1255,16 @@ class AgentTrayApp:
         timer.setInterval(5000)
         timer.timeout.connect(refresh_summary)
         timer.start()
+
+        # Fast online/offline indicator — updates every 2s without waiting for the
+        # 5s summary cycle. Reads from agent_state which is updated by socket
+        # client callbacks, so the dashboard reflects reality within ~2s of a
+        # disconnect.
+        online_timer = QtCore.QTimer(dlg)
+        online_timer.setInterval(2000)
+        online_timer.timeout.connect(refresh_online_status)
+        online_timer.start()
+        refresh_online_status()
 
         ticket_metric_timer = QtCore.QTimer(dlg)
         ticket_metric_timer.setInterval(120_000)

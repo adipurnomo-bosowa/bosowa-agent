@@ -96,6 +96,14 @@ def main() -> None:
     except Exception as e:
         logger.debug('Defender exclusion skipped: %s', e)
 
+    # Snapshot host security posture (SAC + Defender exclusion state). Surfaces
+    # warnings via agent_state so the dashboard can show them; logs for support.
+    try:
+        from agent.utils.security_env import snapshot_security_env
+        snapshot_security_env()
+    except Exception as e:
+        logger.debug('security_env snapshot skipped: %s', e)
+
     # Register startup if not already registered
     if not is_registered():
         register_all()

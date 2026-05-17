@@ -63,9 +63,11 @@ class AgentSocketClient:
         @sio.event
         async def connect():
             import platform
+            from agent.core import agent_state
             logger.info('Socket.IO connected to %s', self.server_url)
             self._connected = True
             self._connect_done.set()
+            agent_state.set_online(True)
 
             location = None
             try:
@@ -93,19 +95,25 @@ class AgentSocketClient:
 
         @sio.event
         async def connect_error(data):
+            from agent.core import agent_state
             logger.warning('Socket.IO connection error: %s', data)
+            agent_state.set_online(False, error=str(data)[:120])
 
         @sio.event
         async def disconnect():
+            from agent.core import agent_state
             logger.warning('Socket.IO disconnected, will retry automatically')
             self._connected = False
             self._connect_done.clear()
+            agent_state.set_online(False, error='disconnected')
 
         @sio.event
         async def reconnect():
+            from agent.core import agent_state
             logger.info('Socket.IO reconnected')
             self._connected = True
             self._connect_done.set()
+            agent_state.set_online(True)
 
         @sio.on('command')
         async def on_command(data: dict):

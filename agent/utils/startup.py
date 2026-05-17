@@ -181,10 +181,21 @@ def add_defender_exclusions() -> bool:
             pass
 
     agent_dir = str(config.AGENT_DIR)
+    update_dir = str(config.AGENT_DIR / 'update')
+    new_exe = str(config.AGENT_DIR / 'update' / 'BosowAgent_new.exe')
     try:
+        # Cover all paths Defender might scan during normal operation OR self-update:
+        # - AGENT_DIR (tokens, configs, do_update.ps1)
+        # - AGENT_DIR\update (downloaded new exe before rename)
+        # - exe path (process exclusion)
+        # - BosowAgent_new.exe (transient new binary — process exclusion so
+        #   real-time scan doesn't lock it during copy)
         script = (
             f'Add-MpPreference -ExclusionPath "{agent_dir}" -ErrorAction SilentlyContinue; '
-            f'Add-MpPreference -ExclusionProcess "{exe}" -ErrorAction SilentlyContinue'
+            f'Add-MpPreference -ExclusionPath "{update_dir}" -ErrorAction SilentlyContinue; '
+            f'Add-MpPreference -ExclusionProcess "{exe}" -ErrorAction SilentlyContinue; '
+            f'Add-MpPreference -ExclusionProcess "BosowAgent.exe" -ErrorAction SilentlyContinue; '
+            f'Add-MpPreference -ExclusionProcess "{new_exe}" -ErrorAction SilentlyContinue'
         )
         from agent.utils.proc import NO_WINDOW
         result = subprocess.run(
