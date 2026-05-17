@@ -44,6 +44,12 @@ class AgentTrayApp:
         self._running = False
         self._last_compliance: dict | None = None
         self._desktop_dlg: QtWidgets.QDialog | None = None
+        # Queue pattern: background thread pushes (count, top_active list);
+        # Qt poll timer in _show_desktop_app drains it and updates the cards/preview.
+        # Using QTimer.singleShot from a worker thread is unreliable under PyInstaller
+        # frozen exe, so we never touch widgets from threads — only via this queue.
+        import queue as _queue_mod
+        self._ticket_count_q: _queue_mod.Queue = _queue_mod.Queue()
 
     def start(self) -> None:
         if self._running:
@@ -405,85 +411,95 @@ class AgentTrayApp:
                     'detail': f'Gagal cek: {e}'}
 
     def _schedule_dashboard_ticket_count(self) -> None:
-        """Refresh the dashboard 'Tiket Aktif' metric + preview list (background + UI hop)."""
+        """Spawn a background fetch of active tickets and push result into
+        self._ticket_count_q. UI update happens on the Qt thread via the
+        poll timer registered in _show_desktop_app — never touch widgets from
+        this thread."""
         def _fetch() -> None:
             try:
                 tickets = list_my_tickets()
-                active = [t for t in tickets if t.get('status') in ('OPEN', 'IN_PROGRESS')]
+                if not isinstance(tickets, list):
+                    logger.warning('Ticket fetch returned non-list: %r', type(tickets))
+                    tickets = []
+                active = [t for t in tickets if isinstance(t, dict)
+                          and t.get('status') in ('OPEN', 'IN_PROGRESS')]
+                logger.info('Dashboard ticket fetch: total=%d active=%d',
+                            len(tickets), len(active))
             except Exception as e:
                 logger.warning('Ticket count fetch failed: %s', e)
                 active = []
-            count = len(active)
-            top_active = active[:3]
-
-            def _ui() -> None:
-                tv = getattr(self, 'ticket_card_val', None)
-                ts = getattr(self, 'ticket_card_status', None)
-                if tv is not None and ts is not None:
-                    try:
-                        tv.setText(str(count))
-                        ts.setText('AKTIF' if count else 'KOSONG')
-                        ts.setStyleSheet(
-                            f'color: {"#60A5FA" if count else "#475569"}; '
-                            f'font-size: 11px; font-weight: 600;'
-                        )
-                    except RuntimeError:
-                        pass
-
-                # Render preview rows in dashboard_active_tickets_layout (if it exists)
-                layout = getattr(self, 'dashboard_active_tickets_layout', None)
-                if layout is None:
-                    return
-                try:
-                    while layout.count():
-                        item = layout.takeAt(0)
-                        if item.widget():
-                            item.widget().deleteLater()
-                    if not top_active:
-                        empty_lbl = QtWidgets.QLabel('Tidak ada tiket aktif.')
-                        empty_lbl.setStyleSheet('color: #64748B; font-size: 11px; padding: 4px 0;')
-                        layout.addWidget(empty_lbl)
-                        return
-                    status_colors = {'OPEN': '#34D399', 'IN_PROGRESS': '#FBBF24'}
-                    for t in top_active:
-                        row_w = QtWidgets.QWidget()
-                        row_w.setStyleSheet('background: transparent;')
-                        row = QtWidgets.QHBoxLayout(row_w)
-                        row.setContentsMargins(0, 2, 0, 2)
-                        row.setSpacing(8)
-                        status = str(t.get('status', '-'))
-                        title = str(t.get('title', '-'))
-                        priority = str(t.get('priority', '-'))
-                        status_lbl = QtWidgets.QLabel(status)
-                        status_lbl.setStyleSheet(
-                            f'color: {status_colors.get(status, "#CBD5E1")}; '
-                            f'font-size: 10px; font-weight: 700; min-width: 90px;'
-                        )
-                        status_lbl.setFixedWidth(100)
-                        title_lbl = QtWidgets.QLabel(title)
-                        title_lbl.setStyleSheet('color: #E2E8F0; font-size: 12px;')
-                        prio_lbl = QtWidgets.QLabel(priority)
-                        prio_color = (
-                            '#EF4444' if priority == 'HIGH'
-                            else ('#FBBF24' if priority == 'MEDIUM' else '#94A3B8')
-                        )
-                        prio_lbl.setStyleSheet(
-                            f'color: {prio_color}; font-size: 10px; font-weight: 700;'
-                        )
-                        row.addWidget(status_lbl)
-                        row.addWidget(title_lbl, 1)
-                        row.addWidget(prio_lbl)
-                        layout.addWidget(row_w)
-                    if count > len(top_active):
-                        more_lbl = QtWidgets.QLabel(f'+{count - len(top_active)} tiket lainnya')
-                        more_lbl.setStyleSheet('color: #64748B; font-size: 10px; padding: 2px 0;')
-                        layout.addWidget(more_lbl)
-                except RuntimeError:
-                    pass
-
-            QtCore.QTimer.singleShot(0, _ui)
+            try:
+                self._ticket_count_q.put_nowait((len(active), active[:3]))
+            except Exception:
+                pass
 
         threading.Thread(target=_fetch, daemon=True).start()
+
+    def _render_dashboard_tickets(self, count: int, top_active: list[dict]) -> None:
+        """Update Tiket Aktif metric card + preview list. MUST run on the Qt
+        thread — called from the poll timer in _show_desktop_app."""
+        tv = getattr(self, 'ticket_card_val', None)
+        ts = getattr(self, 'ticket_card_status', None)
+        if tv is not None and ts is not None:
+            try:
+                tv.setText(str(count))
+                ts.setText('AKTIF' if count else 'KOSONG')
+                ts.setStyleSheet(
+                    f'color: {"#60A5FA" if count else "#475569"}; '
+                    f'font-size: 11px; font-weight: 600;'
+                )
+            except RuntimeError:
+                pass
+
+        layout = getattr(self, 'dashboard_active_tickets_layout', None)
+        if layout is None:
+            return
+        try:
+            while layout.count():
+                item = layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            if not top_active:
+                empty_lbl = QtWidgets.QLabel('Tidak ada tiket aktif.')
+                empty_lbl.setStyleSheet('color: #64748B; font-size: 11px; padding: 4px 0;')
+                layout.addWidget(empty_lbl)
+                return
+            status_colors = {'OPEN': '#34D399', 'IN_PROGRESS': '#FBBF24'}
+            for t in top_active:
+                row_w = QtWidgets.QWidget()
+                row_w.setStyleSheet('background: transparent;')
+                row = QtWidgets.QHBoxLayout(row_w)
+                row.setContentsMargins(0, 2, 0, 2)
+                row.setSpacing(8)
+                status = str(t.get('status', '-'))
+                title = str(t.get('title', '-'))
+                priority = str(t.get('priority', '-'))
+                status_lbl = QtWidgets.QLabel(status)
+                status_lbl.setStyleSheet(
+                    f'color: {status_colors.get(status, "#CBD5E1")}; '
+                    f'font-size: 10px; font-weight: 700; min-width: 90px;'
+                )
+                status_lbl.setFixedWidth(100)
+                title_lbl = QtWidgets.QLabel(title)
+                title_lbl.setStyleSheet('color: #E2E8F0; font-size: 12px;')
+                prio_lbl = QtWidgets.QLabel(priority)
+                prio_color = (
+                    '#EF4444' if priority == 'HIGH'
+                    else ('#FBBF24' if priority == 'MEDIUM' else '#94A3B8')
+                )
+                prio_lbl.setStyleSheet(
+                    f'color: {prio_color}; font-size: 10px; font-weight: 700;'
+                )
+                row.addWidget(status_lbl)
+                row.addWidget(title_lbl, 1)
+                row.addWidget(prio_lbl)
+                layout.addWidget(row_w)
+            if count > len(top_active):
+                more_lbl = QtWidgets.QLabel(f'+{count - len(top_active)} tiket lainnya')
+                more_lbl.setStyleSheet('color: #64748B; font-size: 10px; padding: 2px 0;')
+                layout.addWidget(more_lbl)
+        except RuntimeError:
+            pass
 
     def _show_desktop_app(self) -> None:
         # Prevent duplicate dialogs — if one is already open, bring it to focus
@@ -1206,6 +1222,20 @@ class AgentTrayApp:
         _health_poll_timer.setInterval(300)
         _health_poll_timer.timeout.connect(_apply_health_result)
         _health_poll_timer.start()
+
+        def _apply_ticket_count() -> None:
+            """Drain self._ticket_count_q on the Qt thread and update UI.
+            Runs every 300ms — same pattern as _apply_ticket_result above."""
+            try:
+                count, top_active = self._ticket_count_q.get_nowait()
+            except Exception:
+                return
+            self._render_dashboard_tickets(count, top_active)
+
+        _ticket_count_timer = QtCore.QTimer(dlg)
+        _ticket_count_timer.setInterval(300)
+        _ticket_count_timer.timeout.connect(_apply_ticket_count)
+        _ticket_count_timer.start()
 
         def load_tickets() -> None:
             ticket_table.setRowCount(0)
